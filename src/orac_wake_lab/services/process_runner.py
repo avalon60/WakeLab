@@ -142,6 +142,7 @@ class ProcessRunner:
             with subprocess.Popen(
                 job.command,
                 cwd=job.cwd,
+                env=job.env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,

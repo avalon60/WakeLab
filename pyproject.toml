@@ -15,6 +15,7 @@ torchaudio = "*"
 numpy = "*"
 scipy = "*"
 tqdm = "^4.67.3"
+piper-tts = "^1.4.2"
 
 [tool.poetry.group.conversion]
 optional = true

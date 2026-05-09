@@ -101,7 +101,7 @@ def detect_piper_sample_generator_path() -> Path:
         get_external_dir() / "piper-sample-generator",
     ]
     for candidate in candidates:
-        if (candidate / "generate_samples.py").exists():
+        if (candidate / "piper_sample_generator" / "__main__.py").exists():
             return candidate.resolve()
     return candidates[-1]
 

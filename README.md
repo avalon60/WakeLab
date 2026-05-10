@@ -1,8 +1,9 @@
-# Orac Wake Lab
+![WakeLab 1.0](./assets/images/WakeLabLogo-readme.png)
 
-Wake Lab is a standalone companion training and workbench application for the
-**Orac** voice assistant. It is a local workflow wrapper around openWakeWord
-that helps you prepare, train, and export custom wake-word models.
+
+# Wake Lab
+
+Wake Lab is a standalone companion training and workbench application for the **Orac** voice assistant. It is a local workflow wrapper around openWakeWord that helps you prepare, train, and export custom wake-word models.
 
 Wake Lab does not train a wake word by itself. Instead, it helps you:
 

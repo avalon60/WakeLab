@@ -30,6 +30,7 @@ from orac_wake_lab.services.training_config import write_training_config
 from orac_wake_lab.services.training_config import (
     validate_training_config_inputs,
 )
+from orac_wake_lab.ui.training_tab import build_training_job
 
 
 def test_derive_model_name_from_phrase() -> None:
@@ -76,12 +77,12 @@ def test_training_config_generation(tmp_path: Path) -> None:
     assert config["target_phrase"] == ["Hey Orac"]
     assert config["model_name"] == "hey_orac"
     assert config["output_dir"] == str(project.openwakeword_output_dir)
-    assert config["piper_sample_generator_path"] == "/tmp/piper"
-    assert config["background_paths"] == ["/tmp/background"]
-    assert config["rir_paths"] == ["/tmp/rir"]
-    assert config["false_positive_validation_data_path"] == "/tmp/fp.npy"
+    assert config["piper_sample_generator_path"] == str(project.piper_sample_generator_path)
+    assert config["background_paths"] == [str(p) for p in project.background_paths]
+    assert config["rir_paths"] == [str(p) for p in project.rir_paths]
+    assert config["false_positive_validation_data_path"] == str(project.false_positive_validation_data_path)
     assert config["feature_data_files"] == {
-        "negative_features": "/tmp/negative_features.npy"
+        "negative_features": str(project.negative_feature_data_files["negative_features"])
     }
     assert "false_positive_sample" not in config["feature_data_files"]
     assert config["model_type"] == "dnn"
@@ -168,13 +169,43 @@ def test_project_load_save_round_trip(tmp_path: Path) -> None:
 
 def test_dependency_check_results_are_structured(tmp_path: Path) -> None:
     """Dependency checks should return structured statuses."""
-    results = run_dependency_checks(_project(tmp_path))
+    project = _project(tmp_path)
+    # Mock piper generator layout
+    (project.piper_sample_generator_path / "piper_sample_generator").mkdir(parents=True)
+    (project.piper_sample_generator_path / "piper_sample_generator" / "__main__.py").write_text("")
+    (project.piper_sample_generator_path / "piper_sample_generator" / "augment.py").write_text("")
+    
+    # Mock openwakeword layout
+    project.openwakeword_repo.mkdir(parents=True)
+    (project.openwakeword_repo / "openwakeword").mkdir()
+    (project.openwakeword_repo / "openwakeword" / "train.py").write_text("")
+
+    results = run_dependency_checks(project)
 
     assert results
     assert all(isinstance(result, ValidationResult) for result in results)
     assert {result.status for result in results}.issubset(
         {"pass", "warn", "fail"}
     )
+
+
+def test_build_training_job_uses_sys_executable(tmp_path: Path) -> None:
+    """Subprocess commands should use the current Python interpreter."""
+    project = _project(tmp_path)
+    job = build_training_job(project, "generate_clips")
+
+    assert job.command[0] == sys.executable
+    assert job.command[1] == "-m"
+    assert job.command[2] == "piper_sample_generator"
+
+
+def test_build_training_job_sets_pythonpath(tmp_path: Path) -> None:
+    """Subprocess environment should include Piper generator in PYTHONPATH."""
+    project = _project(tmp_path)
+    job = build_training_job(project, "train_model")
+
+    assert "PYTHONPATH" in job.env
+    assert str(project.piper_sample_generator_path) in job.env["PYTHONPATH"]
 
 
 def test_process_runner_prevents_concurrent_jobs(tmp_path: Path) -> None:
@@ -211,7 +242,8 @@ def _project(tmp_path: Path) -> WakeWordProject:
         wake_phrase="Hey Orac",
         model_name="hey_orac",
         workspace_dir=tmp_path / "hey_orac",
-        piper_sample_generator_path=Path("/tmp/piper"),
+        openwakeword_repo=tmp_path / "openwakeword",
+        piper_sample_generator_path=tmp_path / "piper",
         background_paths=[Path("/tmp/background")],
         rir_paths=[Path("/tmp/rir")],
         negative_feature_data_files={

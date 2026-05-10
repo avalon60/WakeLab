@@ -42,6 +42,12 @@ class ProjectTab(ctk.CTkFrame):
         )
 
         # Use managed defaults for paths
+        self.oww_path_var = ctk.StringVar(
+            value=str(wake_lab_home.detect_openwakeword_repo())
+        )
+        self.orac_path_var = ctk.StringVar(
+            value=str(wake_lab_home.detect_orac_repo())
+        )
         self.piper_path_var = ctk.StringVar(
             value=str(wake_lab_home.detect_piper_sample_generator_path())
         )
@@ -75,6 +81,8 @@ class ProjectTab(ctk.CTkFrame):
             ("Wake phrase", self.wake_phrase_var),
             ("Model name", self.model_name_var),
             ("Workspace root", self.workspace_root_var),
+            ("openWakeWord repository location", self.oww_path_var),
+            ("Orac repository location", self.orac_path_var),
             ("Piper sample generator location", self.piper_path_var),
             ("Background audio dirs", self.background_paths_var),
             ("RIR dirs", self.rir_paths_var),
@@ -82,16 +90,18 @@ class ProjectTab(ctk.CTkFrame):
             ("False-positive validation .npy", self.validation_path_var),
             ("Negative phrases", self.negatives_var),
         ]
-        for row, (label, variable) in enumerate(rows):
+        
+        current_row = 0
+        for label, variable in rows:
             ctk.CTkLabel(self, text=label).grid(
-                row=row,
+                row=current_row,
                 column=0,
                 padx=12,
                 pady=6,
                 sticky="w",
             )
             ctk.CTkEntry(self, textvariable=variable).grid(
-                row=row,
+                row=current_row,
                 column=1,
                 padx=12,
                 pady=6,
@@ -103,7 +113,7 @@ class ProjectTab(ctk.CTkFrame):
                     text="Derive",
                     width=80,
                     command=self._derive_model_name,
-                ).grid(row=row, column=2, padx=12, pady=6)
+                ).grid(row=current_row, column=2, padx=12, pady=6)
             if (
                 "location" in label.lower()
                 or "dirs" in label.lower()
@@ -114,22 +124,25 @@ class ProjectTab(ctk.CTkFrame):
                     text="Browse",
                     width=80,
                     command=lambda v=variable, l=label: self._browse_path(v, l),
-                ).grid(row=row, column=2, padx=12, pady=6)
+                ).grid(row=current_row, column=2, padx=12, pady=6)
+
+            if label == "Piper sample generator location":
+                current_row += 1
+                ctk.CTkLabel(
+                    self,
+                    text=(
+                        "Used by openWakeWord to generate synthetic spoken examples "
+                        "of the wake phrase."
+                    ),
+                    font=("Arial", 10, "italic"),
+                ).grid(row=current_row, column=1, sticky="w", padx=12, pady=(0, 6))
+            
+            current_row += 1
 
         self.wake_phrase_var.trace_add("write", self._phrase_changed)
 
-        # Helper text for Piper
-        ctk.CTkLabel(
-            self,
-            text=(
-                "Used by openWakeWord to generate synthetic spoken examples "
-                "of the wake phrase."
-            ),
-            font=("Arial", 10, "italic"),
-        ).grid(row=3, column=1, sticky="w", padx=12)
-
         ctk.CTkLabel(self, text="Profile").grid(
-            row=10,
+            row=current_row,
             column=0,
             padx=12,
             pady=6,
@@ -139,10 +152,11 @@ class ProjectTab(ctk.CTkFrame):
             self,
             variable=self.profile_var,
             values=["quick", "balanced", "manual"],
-        ).grid(row=10, column=1, padx=12, pady=6, sticky="w")
+        ).grid(row=current_row, column=1, padx=12, pady=6, sticky="w")
 
+        current_row += 1
         button_frame = ctk.CTkFrame(self, fg_color="transparent")
-        button_frame.grid(row=11, column=1, padx=12, pady=12, sticky="w")
+        button_frame.grid(row=current_row, column=1, padx=12, pady=12, sticky="w")
 
         ctk.CTkButton(
             button_frame,
@@ -158,8 +172,9 @@ class ProjectTab(ctk.CTkFrame):
             hover_color="gray40",
         ).pack(side="left")
 
+        current_row += 1
         ctk.CTkLabel(self, textvariable=self.status_var).grid(
-            row=12,
+            row=current_row,
             column=0,
             columnspan=3,
             padx=12,
@@ -190,25 +205,32 @@ class ProjectTab(ctk.CTkFrame):
             initial_dir = wake_lab_home.get_negative_features_dir()
         elif "false-positive" in label.lower():
             initial_dir = wake_lab_home.get_false_positive_validation_dir()
+        elif "openwakeword" in label.lower():
+            initial_dir = wake_lab_home.detect_openwakeword_repo()
+        elif "orac" in label.lower():
+            initial_dir = wake_lab_home.detect_orac_repo()
         elif "piper" in label.lower():
             initial_dir = wake_lab_home.detect_piper_sample_generator_path()
 
         if initial_dir and not initial_dir.exists():
             initial_dir = wake_lab_home.get_wake_lab_home()
 
+        initial_dir_str = str(initial_dir) if initial_dir else None
+
         if variable is self.negative_feature_paths_var:
             selected_files = filedialog.askopenfilenames(
-                initialdir=initial_dir,
+                initialdir=initial_dir_str,
                 filetypes=[("NumPy arrays", "*.npy"), ("All files", "*.*")]
             )
             selected = ",".join(selected_files)
         elif variable is self.validation_path_var:
             selected = filedialog.askopenfilename(
-                initialdir=initial_dir,
+                initialdir=initial_dir_str,
                 filetypes=[("NumPy arrays", "*.npy"), ("All files", "*.*")]
             )
         else:
-            selected = filedialog.askdirectory(initialdir=initial_dir)
+            selected = filedialog.askdirectory(initialdir=initial_dir_str)
+
         if selected:
             variable.set(selected)
 
@@ -232,8 +254,8 @@ class ProjectTab(ctk.CTkFrame):
             wake_phrase=phrase,
             model_name=model_name,
             workspace_dir=workspace_dir,
-            openwakeword_repo=DEFAULT_OPENWAKEWORD_REPO,
-            orac_repo=DEFAULT_ORAC_REPO,
+            openwakeword_repo=Path(self.oww_path_var.get()),
+            orac_repo=Path(self.orac_path_var.get()),
             piper_sample_generator_path=Path(self.piper_path_var.get()),
             background_paths=_split_paths(self.background_paths_var.get()),
             rir_paths=_split_paths(self.rir_paths_var.get()),

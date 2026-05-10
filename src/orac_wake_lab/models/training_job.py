@@ -39,3 +39,4 @@ class TrainingJob:
     log_path: Path
     status: JobStatus = JobStatus.PENDING
     return_code: int | None = None
+    env: dict[str, str] | None = None

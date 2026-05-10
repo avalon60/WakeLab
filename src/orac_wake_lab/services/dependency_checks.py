@@ -32,6 +32,7 @@ def run_dependency_checks(project: WakeWordProject) -> list[ValidationResult]:
         _check_import("yaml", ["generate", "augment", "train"]),
         _check_import("torch", ["generate", "augment", "train"]),
         _check_import("torchaudio", ["augment", "train"]),
+        _check_import("piper", ["generate", "augment", "train"]),
         _check_import("tensorflow", ["convert_tflite"]),
         _check_import("onnx", ["convert_tflite"]),
         _check_import("onnx_tf", ["convert_tflite"]),
@@ -125,35 +126,17 @@ def _check_piper_generator(path: Path) -> ValidationResult:
             message="No Piper sample generator path configured.",
             blocks=["generate", "augment", "train", "convert_tflite"],
         )
-    generate_samples_path = path / "generate_samples.py"
-    if not path.exists() or not generate_samples_path.exists():
+    
+    main_py = path / "piper_sample_generator" / "__main__.py"
+    augment_py = path / "piper_sample_generator" / "augment.py"
+    
+    if not path.exists() or not main_py.exists() or not augment_py.exists():
         return ValidationResult(
             name="Piper sample generator",
             status="fail",
-            message=f"Missing generate_samples.py under {path}",
+            message=f"Missing piper_sample_generator module or expected files under {path}",
             blocks=["generate", "augment", "train", "convert_tflite"],
         )
-
-    original_path = list(sys.path)
-    try:
-        sys.path.insert(0, str(path))
-        module = importlib.import_module("generate_samples")
-        if not hasattr(module, "generate_samples"):
-            return ValidationResult(
-                name="Piper sample generator",
-                status="fail",
-                message="generate_samples module lacks generate_samples.",
-                blocks=["generate", "augment", "train", "convert_tflite"],
-            )
-    except Exception as exc:
-        return ValidationResult(
-            name="Piper sample generator",
-            status="fail",
-            message=str(exc),
-            blocks=["generate", "augment", "train", "convert_tflite"],
-        )
-    finally:
-        sys.path = original_path
 
     return ValidationResult(
         name="Piper sample generator",

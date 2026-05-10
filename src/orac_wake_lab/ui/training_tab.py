@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from collections import deque
 
@@ -142,7 +143,7 @@ class TrainingTab(ctk.CTkFrame):
 
 
 def build_training_job(project: WakeWordProject, stage: str) -> TrainingJob:
-    """Build a subprocess job for an openWakeWord training stage.
+    """Build a subprocess job for an openWakeWord or Piper training stage.
 
     Args:
         project (WakeWordProject): Project settings.
@@ -152,10 +153,19 @@ def build_training_job(project: WakeWordProject, stage: str) -> TrainingJob:
         TrainingJob: Configured training job.
     """
     stage_args = {
-        "generate_clips": ["--generate_clips"],
-        "augment_clips": ["--augment_clips"],
-        "train_model": ["--train_model"],
-        "train_convert_tflite": ["--train_model", "--convert_to_tflite"],
+        "generate_clips": ["--training_config", str(project.training_config_path)],
+        "augment_clips": ["--training_config", str(project.training_config_path)],
+        "train_model": [
+            "--training_config",
+            str(project.training_config_path),
+            "--train_model",
+        ],
+        "train_convert_tflite": [
+            "--training_config",
+            str(project.training_config_path),
+            "--train_model",
+            "--convert_to_tflite",
+        ],
     }
     log_names = {
         "generate_clips": "generate_clips.log",
@@ -165,19 +175,49 @@ def build_training_job(project: WakeWordProject, stage: str) -> TrainingJob:
     }
     if stage not in stage_args:
         raise ValueError(f"Unsupported training stage: {stage}")
-    command = [
-        sys.executable,
-        "-m",
-        "openwakeword.train",
-        "--training_config",
-        str(project.training_config_path),
-        *stage_args[stage],
-    ]
+
+    env = dict(os.environ)
+    python_path = env.get("PYTHONPATH", "")
+    
+    if stage == "generate_clips":
+        command = [
+            sys.executable,
+            "-m",
+            "piper_sample_generator",
+            *stage_args[stage],
+        ]
+        cwd = project.piper_sample_generator_path
+    elif stage == "augment_clips":
+        command = [
+            sys.executable,
+            "-m",
+            "piper_sample_generator.augment",
+            *stage_args[stage],
+        ]
+        cwd = project.piper_sample_generator_path
+    else:
+        command = [
+            sys.executable,
+            "-m",
+            "openwakeword.train",
+            *stage_args[stage],
+        ]
+        cwd = project.openwakeword_repo
+        # Add Piper generator to PYTHONPATH for openwakeword.train if needed
+        if python_path:
+            python_path = f"{project.piper_sample_generator_path}:{python_path}"
+        else:
+            python_path = str(project.piper_sample_generator_path)
+
+    if python_path:
+        env["PYTHONPATH"] = python_path
+
     return TrainingJob(
         name=stage,
         command=command,
-        cwd=project.openwakeword_repo,
+        cwd=cwd,
         log_path=project.logs_dir / log_names[stage],
+        env=env,
     )
 
 
@@ -197,12 +237,14 @@ def _blocking_errors_for_stage(
             f"openWakeWord repository is missing: {project.openwakeword_repo}"
         )
     if stage_blocks.intersection({"generate", "augment", "train"}):
-        if not (
+        main_py = (
             project.piper_sample_generator_path
-            / "generate_samples.py"
-        ).exists():
+            / "piper_sample_generator"
+            / "__main__.py"
+        )
+        if not main_py.exists():
             errors.append(
-                "Piper sample generator is missing: "
+                "Piper sample generator is missing or has invalid layout: "
                 f"{project.piper_sample_generator_path}"
             )
         if not project.background_paths:

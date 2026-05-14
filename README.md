@@ -63,10 +63,14 @@ These terms are specific to the Wake Lab workflow.
   generated training samples.
 - **Room impulse responses, RIR**: recordings of room acoustics used to
   make training samples sound more like real microphone capture.
-- **Negative feature `.npy` files**: precomputed openWakeWord feature
-  arrays for negative examples. These are required for training.
-- **False-positive validation `.npy` file**: a feature file used to
-  validate how often the model triggers when it should not.
+- **Negative feature `.npy` files**: the standard bundle of preprocessed
+  feature arrays that teach openWakeWord what normal background speech,
+  noise, and music look like. Wake Lab expects these files to already
+  exist and points training at them.
+- **False-positive validation `.npy` file**: the preprocessed feature
+  file used to check how often the model triggers when it should not.
+  Wake Lab expects this to already exist as a `.npy` file, not as a raw
+  audio clip.
 - **ONNX model**: an exported model format that Wake Lab can copy into
   Orac.
 - **TFLite model**: an alternative exported model format that Wake Lab
@@ -77,6 +81,49 @@ These terms are specific to the Wake Lab workflow.
   points Orac at the exported model.
 - **Smoke test**: the Orac command used to confirm that the exported
   model activates correctly.
+
+## What are .npy feature files?
+
+`.npy` files are NumPy binary data files. In Wake Lab, they are not
+audio recordings. They are numerical arrays created by preprocessing
+audio first, and openWakeWord uses those arrays during training.
+
+The practical difference is:
+
+- Raw audio files such as `.wav`, `.mp3`, and `.flac` contain sound.
+- Preprocessed `.npy` feature files contain numbers derived from that
+  sound after feature extraction.
+
+Wake Lab currently expects those `.npy` files to already exist. You
+normally do not open or edit them manually. Instead, you point Wake Lab
+at the files produced by the training or preprocessing workflow.
+
+## Feature bundle bootstrap
+
+Wake Lab ships with a first-run workflow for the standard openWakeWord
+feature bundle so you do not need to chase down feature files by hand.
+The bundle lives in the managed WakeLab home under:
+
+- `~/WakeLab/data/features/negative/openwakeword_features_ACAV100M_2000_hrs_16bit.npy`
+- `~/WakeLab/data/features/validation/validation_set_features.npy`
+
+These are `.npy` files, not audio recordings. The negative file is the
+large one, about 17 GB, and the validation file is much smaller.
+
+On the **Project** tab, Wake Lab can:
+
+- Detect Feature Bundle: check whether the managed files are already in
+  place and use them automatically
+- Register Existing Feature Bundle: copy files you already have into the
+  managed WakeLab folders
+- Open Feature Folder: open the managed feature directory in your file
+  manager
+- Download Standard Feature Bundle: fetch the official bundle from
+  `davidscripka/openwakeword_features` on Hugging Face
+
+Simple mode uses the managed bundle automatically when it is present.
+Advanced users can still browse to their own `.npy` files and override
+the managed locations manually.
 
 ## Prerequisites
 
@@ -265,7 +312,10 @@ From a fresh checkout:
 
 4. In the **Project** tab, click **Initialise Wake Lab Folders**.
 5. Supply your training data (background, RIR, features) to the newly
-   created folders under `~/WakeLab/data/`.
+   created folders under `~/WakeLab/data/`. The `negative/` and
+   `validation/` feature folders expect `.npy` files, not ordinary audio
+   recordings. For a first run, use the feature-bundle actions in the
+   **Project** tab rather than hunting for files manually.
 6. Clone the external tools if missing:
    ```bash
    cd ~/WakeLab/external
@@ -300,8 +350,7 @@ good simply because training completes.
 6. Set the Piper sample generator path to your local
    `piper-sample-generator` checkout.
 7. Select the background audio directories, RIR directories, negative
-   feature data `.npy` files, and the false-positive validation `.npy`
-   file.
+   feature `.npy` files, and the false-positive validation `.npy` file.
 8. Run the `Checks` tab and review the results before training.
 9. Return to `Project` if needed and generate or refresh the training
    YAML.

@@ -12,17 +12,29 @@ customtkinter = ">=5.2.2"
 pyyaml = "^6.0"
 torch = "*"
 torchaudio = "*"
+torchcodec = "^0.11.1"
 numpy = "*"
-scipy = "*"
+scipy = ">=1.10,<1.17"
 tqdm = "^4.67.3"
 piper-tts = "^1.4.2"
+scikit-learn = ">=1,<2"
+audiomentations = "0.33.0"
+torchinfo = ">=1,<2"
+torchmetrics = ">=1,<2"
+pronouncing = "^0.2.0"
+deep-phonemizer = "0.0.19"
+torch-audiomentations = "^0.12.0"
+speechbrain = "^1.0.0"
+mutagen = "^1.47.0"
+acoustics = "^0.2.6"
+onnxscript = ">=0.5,<1"
 
 [tool.poetry.group.conversion]
 optional = true
 
 [tool.poetry.group.conversion.dependencies]
 tensorflow = "*"
-onnx = "*"
+onnx = ">=1.10.2,<1.19.0"
 onnx-tf = "*"
 
 [tool.poetry.group.test.dependencies]

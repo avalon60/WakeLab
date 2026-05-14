@@ -11,6 +11,8 @@ from typing import Any
 
 from orac_wake_lab.models.project import WakeWordProject
 from orac_wake_lab.models.validation import ValidationResult
+from orac_wake_lab.services.feature_bundle import STANDARD_FEATURE_BUNDLE_MESSAGE
+from orac_wake_lab.services.feature_bundle import validate_feature_file
 
 
 TRAINING_PROFILES: dict[str, dict[str, Any]] = {
@@ -122,21 +124,27 @@ def validate_training_config_inputs(
             name="Negative feature data files",
             status="fail",
             message=(
-                "At least one precomputed negative feature .npy file is "
-                "required for openWakeWord training."
+                f"{STANDARD_FEATURE_BUNDLE_MESSAGE} "
+                "No negative feature file is currently selected."
             ),
             blocks=["train"],
         )
     missing = [
-        f"{name}: {path}"
+        result.message
         for name, path in feature_files.items()
-        if not path.exists() or path.suffix != ".npy"
+        for result in [
+            validate_feature_file(
+                path,
+                f"Negative feature file '{name}'",
+            )
+        ]
+        if result.is_failure
     ]
     if missing:
         return ValidationResult(
             name="Negative feature data files",
             status="fail",
-            message="Missing or invalid .npy files: " + ", ".join(missing),
+            message=" ".join(missing),
             blocks=["train"],
         )
     return ValidationResult(

@@ -91,9 +91,33 @@ class ExportTab(ctk.CTkFrame):
         self.model_path_var.set(str(models[-1]))
         self.status_var.set(f"Found {len(models)} model file(s).")
 
+    def refresh_from_project(self) -> None:
+        """Refresh export defaults from the current project."""
+        project = self.app.get_project()
+        if project is None:
+            return
+        models = find_generated_models(project)
+        if models:
+            self.model_path_var.set(str(models[-1]))
+            self.status_var.set(f"Found {len(models)} model file(s).")
+        else:
+            self.status_var.set("No .onnx or .tflite models found.")
+
     def browse_model(self) -> None:
         """Select a model file manually."""
+        project = self.app.get_project()
+        model_path_value = self.model_path_var.get().strip()
+        initial_dir = Path(model_path_value).expanduser().parent
+        if project is not None and (
+            not model_path_value or not initial_dir.exists()
+        ):
+            initial_dir = (
+                project.models_dir
+                if project.models_dir.exists()
+                else project.openwakeword_output_dir
+            )
         selected = filedialog.askopenfilename(
+            initialdir=str(initial_dir),
             filetypes=[
                 ("openWakeWord models", "*.onnx *.tflite"),
                 ("All files", "*.*"),

@@ -30,6 +30,7 @@ class WakeWordProject:
         openwakeword_repo (Path): Local openWakeWord repository path.
         orac_repo (Path): Local Orac repository path.
         piper_sample_generator_path (Path): Piper sample generator path.
+        piper_voice_model_path (Path): Piper voice or generator model path.
         background_paths (list[Path]): Background audio directories.
         rir_paths (list[Path]): Room impulse response directories.
         negative_feature_data_files (dict[str, Path]): Precomputed negative
@@ -45,6 +46,7 @@ class WakeWordProject:
     openwakeword_repo: Path = DEFAULT_OPENWAKEWORD_REPO
     orac_repo: Path = DEFAULT_ORAC_REPO
     piper_sample_generator_path: Path = Path("")
+    piper_voice_model_path: Path = Path("")
     background_paths: list[Path] | None = None
     rir_paths: list[Path] | None = None
     negative_feature_data_files: dict[str, Path] | None = None
@@ -60,6 +62,7 @@ class WakeWordProject:
         self.piper_sample_generator_path = (
             self.piper_sample_generator_path.expanduser()
         )
+        self.piper_voice_model_path = self.piper_voice_model_path.expanduser()
         self.false_positive_validation_data_path = (
             self.false_positive_validation_data_path.expanduser()
         )
@@ -97,6 +100,21 @@ class WakeWordProject:
     def export_dir(self) -> Path:
         """Return the project export directory."""
         return self.workspace_dir / "export"
+
+    @property
+    def clip_dir(self) -> Path:
+        """Return the project clip workspace directory."""
+        return self.workspace_dir / "clips"
+
+    @property
+    def generated_clips_dir(self) -> Path:
+        """Return the generated clip output directory."""
+        return self.clip_dir / "generated"
+
+    @property
+    def augmented_clips_dir(self) -> Path:
+        """Return the augmented clip output directory."""
+        return self.clip_dir / "augmented"
 
     @property
     def training_config_path(self) -> Path:
@@ -147,6 +165,7 @@ class WakeWordProject:
             "openwakeword_repo",
             "orac_repo",
             "piper_sample_generator_path",
+            "piper_voice_model_path",
             "false_positive_validation_data_path",
         }
         list_path_fields = {"background_paths", "rir_paths"}

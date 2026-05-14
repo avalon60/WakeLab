@@ -1,2 +1,5 @@
 
-src/orac_wake_lab/ui/__pycache__/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/

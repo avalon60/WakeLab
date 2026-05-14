@@ -25,12 +25,20 @@ class ChecksTab(ctk.CTkFrame):
         self.app = app
         self.output = ctk.CTkTextbox(self, wrap="word")
         self.output.pack(fill="both", expand=True, padx=12, pady=12)
+        button_row = ctk.CTkFrame(self, fg_color="transparent")
+        button_row.pack(anchor="w", padx=12, pady=(0, 12))
         self.run_button = ctk.CTkButton(
-            self,
+            button_row,
             text="Run Checks",
             command=self.run_checks,
         )
-        self.run_button.pack(anchor="w", padx=12, pady=(0, 12))
+        self.run_button.pack(side="left", padx=(0, 8))
+        self.copy_button = ctk.CTkButton(
+            button_row,
+            text="Copy To Clipboard",
+            command=self.copy_output_to_clipboard,
+        )
+        self.copy_button.pack(side="left")
 
     def run_checks(self) -> None:
         """Run dependency checks for the current project."""
@@ -69,3 +77,10 @@ class ChecksTab(ctk.CTkFrame):
             )
         self.output.configure(state="disabled")
         self.run_button.configure(state="normal")
+
+    def copy_output_to_clipboard(self) -> None:
+        """Copy the current checks output to the system clipboard."""
+        text = self.output.get("1.0", "end-1c")
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self.update_idletasks()

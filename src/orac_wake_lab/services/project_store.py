@@ -1,6 +1,6 @@
 """Project persistence service for Orac Wake Lab."""
 # Author: Clive Bostock
-# Date: 2026-05-09
+# Date: 2026-05-10
 # Description: Creates and loads wake-word project workspaces.
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from pathlib import Path
 
 from orac_wake_lab.models.project import DEFAULT_WORKSPACE_ROOT
 from orac_wake_lab.models.project import WakeWordProject
+from orac_wake_lab.services import wake_lab_home
 
 
 PROJECT_SUBDIRS = [
@@ -71,6 +72,26 @@ def save_project(project: WakeWordProject) -> Path:
         encoding="utf-8",
     )
     return project_path
+
+
+def discover_projects(projects_root: Path | None = None) -> list[WakeWordProject]:
+    """Load saved projects from the managed projects directory.
+
+    Args:
+        projects_root (Path | None): Directory containing project workspaces.
+            Defaults to the managed Wake Lab projects root.
+
+    Returns:
+        list[WakeWordProject]: Loadable projects sorted by model name.
+    """
+    root = (projects_root or wake_lab_home.get_projects_root()).expanduser()
+    if not root.exists():
+        return []
+
+    projects: list[WakeWordProject] = []
+    for project_path in sorted(root.glob("*/project.json")):
+        projects.append(load_project(project_path))
+    return sorted(projects, key=lambda project: project.model_name)
 
 
 def load_project(project_path: Path) -> WakeWordProject:

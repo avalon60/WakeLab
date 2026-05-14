@@ -50,6 +50,7 @@ def find_generated_models(project: WakeWordProject) -> list[Path]:
             target = project.models_dir / candidate.name
             if candidate.resolve() != target.resolve():
                 shutil.copy2(candidate, target)
+            _copy_onnx_sidecar(candidate, target, overwrite=True)
             mirrored.append(target)
     return mirrored
 
@@ -109,7 +110,22 @@ def export_model_to_orac(
         raise FileExistsError(
             f"Target model already exists: {target_file}"
         )
+    sidecar = _onnx_sidecar_path(model_file)
+    target_sidecar = _onnx_sidecar_path(target_file)
+    if sidecar is not None and not sidecar.exists():
+        raise FileNotFoundError(
+            f"ONNX external data file does not exist: {sidecar}"
+        )
+    if (
+        sidecar is not None
+        and target_sidecar.exists()
+        and not overwrite
+    ):
+        raise FileExistsError(
+            f"Target ONNX external data file already exists: {target_sidecar}"
+        )
     shutil.copy2(model_file, target_file)
+    _copy_onnx_sidecar(model_file, target_file, overwrite=overwrite)
 
     snippet = build_orac_config_snippet(target_file)
     project.config_dir.mkdir(parents=True, exist_ok=True)
@@ -119,3 +135,30 @@ def export_model_to_orac(
         project.orac_candidate_config_path,
         build_smoke_test_command(project),
     )
+
+
+def _onnx_sidecar_path(model_file: Path) -> Path | None:
+    """Return the external-data sidecar path for an ONNX model."""
+    if model_file.suffix != ".onnx":
+        return None
+    return model_file.with_name(f"{model_file.name}.data")
+
+
+def _copy_onnx_sidecar(
+    source_model: Path,
+    target_model: Path,
+    *,
+    overwrite: bool,
+) -> None:
+    """Copy an ONNX external-data sidecar when one exists."""
+    source_sidecar = _onnx_sidecar_path(source_model)
+    target_sidecar = _onnx_sidecar_path(target_model)
+    if source_sidecar is None or target_sidecar is None:
+        return
+    if not source_sidecar.exists():
+        return
+    if target_sidecar.exists() and not overwrite:
+        raise FileExistsError(
+            f"Target ONNX external data file already exists: {target_sidecar}"
+        )
+    shutil.copy2(source_sidecar, target_sidecar)

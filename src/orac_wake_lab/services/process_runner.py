@@ -115,6 +115,9 @@ class ProcessRunner:
                     os.killpg(process.pid, signal.SIGKILL)
                 else:
                     process.kill()
+                process.wait(timeout=timeout_seconds)
+            except subprocess.TimeoutExpired:
+                append_log(job.log_path, "Forced cancel did not exit in time.")
             except ProcessLookupError:
                 pass
         except ProcessLookupError:
@@ -153,9 +156,10 @@ class ProcessRunner:
                     self._process = process
                 assert process.stdout is not None
                 for line in process.stdout:
-                    append_log(job.log_path, line)
-                    if on_output is not None:
-                        on_output(line)
+                    if _should_emit_line(line):
+                        append_log(job.log_path, line)
+                        if on_output is not None:
+                            on_output(line)
                 job.return_code = process.wait()
         except Exception as exc:
             job.return_code = -1
@@ -180,3 +184,9 @@ class ProcessRunner:
                 self._cancel_requested = False
             if on_complete is not None:
                 on_complete(job)
+
+
+def _should_emit_line(line: str) -> bool:
+    """Return whether a subprocess line should be shown to the user."""
+    stripped = line.lstrip()
+    return not stripped.startswith("DEBUG:")

@@ -451,12 +451,40 @@ Widgets:
 
 ![Test tab](images/Test.png)
 
-This tab is currently a placeholder for Phase 2 live testing workflows.
+This tab tests a trained ONNX wake-word model against a selected WAV
+file. It is intended as the first diagnostic path before live microphone
+testing: use it to confirm that the model activates on known positive
+clips and stays below threshold on non-wake-word audio.
 
 Widgets:
 
-- **Informational label**: explains that live microphone testing and
-  threshold tuning are planned for a later phase.
+- **Model**: path to the trained `.onnx` model. **Refresh Model**
+  fills this from the current project, usually
+  `openwakeword_output/<model_name>.onnx`.
+- **Model Browse**: selects an ONNX model manually.
+- **WAV**: path to the WAV file to evaluate.
+- **WAV Browse**: selects a WAV file manually. Project-generated
+  positive and negative clips are useful first test files.
+- **Threshold**: score cutoff for reporting activation. The default is
+  `0.75`.
+- **Run WAV Test**: loads the model, runs the WAV through
+  openWakeWord, and reports the highest score.
+- **Copy To Clipboard**: copies the diagnostic output for support or
+  comparison.
+- **Output textbox**: shows the model path, WAV path, model output
+  name, number of frames evaluated, maximum score, threshold, and
+  activation result.
+
+Typical checks:
+
+1. Test one generated positive clip from
+   `openwakeword_output/<model_name>/positive_train/`. The result should
+   usually be `ACTIVATED`.
+2. Test one generated negative clip from
+   `openwakeword_output/<model_name>/negative_train/`. The maximum score
+   should ideally stay below the threshold.
+3. Test real recordings of your voice saying and not saying the wake
+   phrase before relying on the model in Orac.
 
 ### Export tab
 

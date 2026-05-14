@@ -1,6 +1,6 @@
 """Main CustomTkinter window for Orac Wake Lab."""
 # Author: Clive Bostock
-# Date: 2026-05-10
+# Date: 2026-05-14
 # Description: Composes the Phase 1 Orac Wake Lab desktop UI.
 
 from __future__ import annotations
@@ -116,6 +116,15 @@ class OracWakeLabApp(ctk.CTk):
                 f"Workspace: {project.workspace_dir}"
             )
         )
+        if hasattr(self, "test_tab"):
+            self.test_tab.refresh_from_project()
+        if hasattr(self, "export_tab"):
+            self.export_tab.refresh_from_project()
+
+    def clear_project(self) -> None:
+        """Clear the current project selection."""
+        self.current_project = None
+        self.project_label.configure(text="No project loaded.")
         if hasattr(self, "test_tab"):
             self.test_tab.refresh_from_project()
         if hasattr(self, "export_tab"):

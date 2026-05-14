@@ -1,6 +1,6 @@
 """File-based model test tab for Orac Wake Lab."""
 # Author: Clive Bostock
-# Date: 2026-05-13
+# Date: 2026-05-14
 # Description: Tests trained wake-word models against selected WAV files.
 
 from __future__ import annotations
@@ -128,6 +128,7 @@ class TestTab(ctk.CTkFrame):
         """Fill the model path from the current project."""
         project = self.app.get_project()
         if project is None:
+            self.model_path_var.set("")
             return
         self.model_path_var.set(str(model_tester.default_model_path(project)))
 

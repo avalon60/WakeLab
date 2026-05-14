@@ -1,6 +1,6 @@
 """Project setup tab for Orac Wake Lab."""
 # Author: Clive Bostock
-# Date: 2026-05-10
+# Date: 2026-05-14
 # Description: Builds the wake phrase and workspace setup UI.
 
 from __future__ import annotations
@@ -41,35 +41,44 @@ class ProjectTab(ctk.CTkFrame):
         """
         super().__init__(master)
         self.app = app
-        self.wake_phrase_var = ctk.StringVar(value="Hey Orac")
-        self.model_name_var = ctk.StringVar(value="hey_orac")
+        defaults = _default_project_form_values()
+        self.wake_phrase_var = ctk.StringVar(value=defaults["wake_phrase"])
+        self.model_name_var = ctk.StringVar(value=defaults["model_name"])
         self.workspace_root_var = ctk.StringVar(
-            value=str(DEFAULT_WORKSPACE_ROOT)
+            value=defaults["workspace_root"]
         )
 
         # Use managed defaults for paths
         self.oww_path_var = ctk.StringVar(
-            value=str(wake_lab_home.detect_openwakeword_repo())
+            value=defaults["openwakeword_repo"]
         )
         self.orac_path_var = ctk.StringVar(
-            value=str(wake_lab_home.detect_orac_repo())
+            value=defaults["orac_repo"]
         )
         self.piper_path_var = ctk.StringVar(
-            value=str(wake_lab_home.detect_piper_sample_generator_path())
+            value=defaults["piper_sample_generator_path"]
         )
-        self.piper_model_path_var = ctk.StringVar(value="")
+        self.piper_model_path_var = ctk.StringVar(
+            value=defaults["piper_voice_model_path"]
+        )
         self.background_paths_var = ctk.StringVar(
-            value=str(wake_lab_home.get_background_audio_dir())
+            value=defaults["background_paths"]
         )
         self.rir_paths_var = ctk.StringVar(
-            value=str(wake_lab_home.get_rir_dir())
+            value=defaults["rir_paths"]
         )
 
-        self.negative_feature_paths_var = ctk.StringVar(value="")
-        self.validation_path_var = ctk.StringVar(value="")
+        self.negative_feature_paths_var = ctk.StringVar(
+            value=defaults["negative_feature_data_files"]
+        )
+        self.validation_path_var = ctk.StringVar(
+            value=defaults["false_positive_validation_data_path"]
+        )
 
-        self.negatives_var = ctk.StringVar(value="hey oracle, oracle, orac")
-        self.profile_var = ctk.StringVar(value="quick")
+        self.negatives_var = ctk.StringVar(
+            value=defaults["custom_negative_phrases"]
+        )
+        self.profile_var = ctk.StringVar(value=defaults["profile"])
         self.status_var = ctk.StringVar(value="No project created.")
         self.feature_bundle_status_var = ctk.StringVar(value="")
         self.selected_project_var = ctk.StringVar(value="")
@@ -96,6 +105,12 @@ class ProjectTab(ctk.CTkFrame):
         project_buttons.grid(row=0, column=2, padx=12, pady=6, sticky="w")
         ctk.CTkButton(
             project_buttons,
+            text="New Project",
+            width=110,
+            command=self.new_project,
+        ).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(
+            project_buttons,
             text="Open",
             width=80,
             command=self.open_selected_project,
@@ -111,9 +126,9 @@ class ProjectTab(ctk.CTkFrame):
             ("Wake phrase", self.wake_phrase_var),
             ("Model name", self.model_name_var),
             ("Workspace root", self.workspace_root_var),
-            ("openWakeWord repository location", self.oww_path_var),
-            ("Orac repository location", self.orac_path_var),
-            ("Piper sample generator location", self.piper_path_var),
+            ("Local openWakeWord checkout", self.oww_path_var),
+            ("Local Orac checkout", self.orac_path_var),
+            ("Local Piper sample generator checkout", self.piper_path_var),
             ("Piper voice / generator model", self.piper_model_path_var),
             ("Background audio dirs", self.background_paths_var),
             ("RIR dirs", self.rir_paths_var),
@@ -145,12 +160,7 @@ class ProjectTab(ctk.CTkFrame):
                     width=80,
                     command=self._derive_model_name,
                 ).grid(row=current_row, column=2, padx=12, pady=6)
-            if (
-                "location" in label.lower()
-                or "dirs" in label.lower()
-                or ".npy" in label.lower()
-                or variable is self.piper_model_path_var
-            ):
+            if self._field_uses_path_browser(variable, label):
                 ctk.CTkButton(
                     self,
                     text="Browse",
@@ -165,7 +175,7 @@ class ProjectTab(ctk.CTkFrame):
                     command=self.test_piper_voice_model,
                 ).grid(row=current_row, column=3, padx=12, pady=6)
 
-            if label == "Piper sample generator location":
+            if label == "Local Piper sample generator checkout":
                 current_row += 1
                 ctk.CTkLabel(
                     self,
@@ -289,6 +299,29 @@ class ProjectTab(ctk.CTkFrame):
             sticky="w",
         )
         self.refresh_projects()
+
+    def _field_uses_path_browser(
+        self,
+        variable: ctk.StringVar,
+        label: str,
+    ) -> bool:
+        """Return whether a form field should show a Browse button.
+
+        Args:
+            variable (ctk.StringVar): Field variable.
+            label (str): Display label for the field.
+
+        Returns:
+            bool: Whether the field accepts a path selected by file dialog.
+        """
+        return (
+            variable is self.oww_path_var
+            or variable is self.orac_path_var
+            or variable is self.piper_path_var
+            or variable is self.piper_model_path_var
+            or "dirs" in label.lower()
+            or ".npy" in label.lower()
+        )
 
     def _phrase_changed(self, *_args: object) -> None:
         if not self.model_name_var.get().strip():
@@ -543,6 +576,14 @@ class ProjectTab(ctk.CTkFrame):
         self.project_menu.configure(values=values)
         self.selected_project_var.set(values[0])
 
+    def new_project(self) -> None:
+        """Reset the project form to defaults for a new project."""
+        self._apply_form_values(_new_project_form_values())
+        if hasattr(self.app, "clear_project"):
+            self.app.clear_project()
+        self.refresh_feature_bundle(auto_apply=True)
+        self.status_var.set("New project form ready.")
+
     def open_selected_project(self) -> None:
         """Open the selected saved project."""
         selected = self.selected_project_var.get()
@@ -573,7 +614,15 @@ class ProjectTab(ctk.CTkFrame):
         Args:
             project (WakeWordProject): Loaded project data.
         """
-        values = project_form_values(project)
+        self._apply_form_values(project_form_values(project))
+        self.refresh_feature_bundle(auto_apply=True)
+
+    def _apply_form_values(self, values: dict[str, str]) -> None:
+        """Populate editable fields from form values.
+
+        Args:
+            values (dict[str, str]): Form field values.
+        """
         self.wake_phrase_var.set(values["wake_phrase"])
         self.model_name_var.set(values["model_name"])
         self.workspace_root_var.set(values["workspace_root"])
@@ -591,7 +640,6 @@ class ProjectTab(ctk.CTkFrame):
         )
         self.negatives_var.set(values["custom_negative_phrases"])
         self.profile_var.set(values["profile"])
-        self.refresh_feature_bundle(auto_apply=True)
 
     def test_piper_voice_model(self) -> None:
         """Synthesise and play a short sample using the selected Piper model."""
@@ -728,6 +776,40 @@ def project_form_values(project: WakeWordProject) -> dict[str, str]:
         ),
         "profile": project.profile,
     }
+
+
+def _default_project_form_values() -> dict[str, str]:
+    """Return the default form values used when the tab starts."""
+    return {
+        "wake_phrase": "Hey Orac",
+        "model_name": "hey_orac",
+        "workspace_root": str(DEFAULT_WORKSPACE_ROOT),
+        "openwakeword_repo": str(wake_lab_home.get_openwakeword_repo_dir()),
+        "orac_repo": str(wake_lab_home.get_orac_repo_dir()),
+        "piper_sample_generator_path": str(
+            wake_lab_home.get_piper_sample_generator_dir()
+        ),
+        "piper_voice_model_path": "",
+        "background_paths": str(wake_lab_home.get_background_audio_dir()),
+        "rir_paths": str(wake_lab_home.get_rir_dir()),
+        "negative_feature_data_files": "",
+        "false_positive_validation_data_path": "",
+        "custom_negative_phrases": "hey oracle, oracle, orac",
+        "profile": "quick",
+    }
+
+
+def _new_project_form_values() -> dict[str, str]:
+    """Return blank project-specific values for a new project."""
+    values = _default_project_form_values()
+    values.update(
+        {
+            "wake_phrase": "",
+            "model_name": "",
+            "custom_negative_phrases": "",
+        }
+    )
+    return values
 
 
 def _project_label(project: WakeWordProject) -> str:

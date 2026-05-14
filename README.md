@@ -229,6 +229,7 @@ Within the Wake Lab home, the following conventional layout is used:
   external/
     openWakeWord/         # Local openWakeWord repository checkout
     piper-sample-generator/ # Local piper-sample-generator checkout
+    Orac/                 # Optional managed Orac repository checkout
   downloads/              # Temporary download location
   cache/                  # Application cache
 ```

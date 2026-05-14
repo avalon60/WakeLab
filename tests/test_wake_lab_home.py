@@ -1,6 +1,6 @@
 """Tests for the Orac Wake Lab home directory service."""
 # Author: Clive Bostock
-# Date: 2026-05-09
+# Date: 2026-05-14
 # Description: Verifies managed path generation and auto-detection.
 
 from __future__ import annotations
@@ -36,6 +36,9 @@ def test_managed_paths_derive_from_home() -> None:
     assert wake_lab_home.get_rir_dir() == home / "data" / "rir"
     assert wake_lab_home.get_negative_features_dir() == home / "data" / "features" / "negative"
     assert wake_lab_home.get_false_positive_validation_dir() == home / "data" / "features" / "validation"
+    assert wake_lab_home.get_openwakeword_repo_dir() == home / "external" / "openWakeWord"
+    assert wake_lab_home.get_piper_sample_generator_dir() == home / "external" / "piper-sample-generator"
+    assert wake_lab_home.get_orac_repo_dir() == home / "external" / "Orac"
 
 
 def test_initialize_wake_lab_folders(tmp_path: Path) -> None:
@@ -50,9 +53,10 @@ def test_initialize_wake_lab_folders(tmp_path: Path) -> None:
         assert (tmp_path / "data" / "features" / "validation").is_dir()
         assert (tmp_path / "external" / "openWakeWord").is_dir()
         assert (tmp_path / "external" / "piper-sample-generator").is_dir()
+        assert (tmp_path / "external" / "Orac").is_dir()
         assert (tmp_path / "downloads").is_dir()
         assert (tmp_path / "cache").is_dir()
-        assert len(dirs) == 10
+        assert len(dirs) == 11
 
 
 def test_discover_negative_features(tmp_path: Path) -> None:

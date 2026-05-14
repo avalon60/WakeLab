@@ -1,6 +1,6 @@
 """Orac export tab for Orac Wake Lab."""
 # Author: Clive Bostock
-# Date: 2026-05-09
+# Date: 2026-05-14
 # Description: Exports generated wake-word models into Orac safely.
 
 from __future__ import annotations
@@ -95,6 +95,8 @@ class ExportTab(ctk.CTkFrame):
         """Refresh export defaults from the current project."""
         project = self.app.get_project()
         if project is None:
+            self.model_path_var.set("")
+            self.status_var.set("No model exported.")
             return
         models = find_generated_models(project)
         if models:

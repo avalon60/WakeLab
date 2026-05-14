@@ -315,6 +315,86 @@ def test_loaded_project_fields_are_mapped_to_project_form(
     assert values["profile"] == "balanced"
 
 
+def test_new_project_resets_form_and_clears_active_project(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """New Project should clear project-specific fields without saving."""
+    defaults = {
+        "wake_phrase": "",
+        "model_name": "",
+        "workspace_root": str(tmp_path / "projects"),
+        "openwakeword_repo": str(tmp_path / "external" / "openWakeWord"),
+        "orac_repo": str(tmp_path / "external" / "Orac"),
+        "piper_sample_generator_path": str(tmp_path / "piper"),
+        "piper_voice_model_path": "",
+        "background_paths": str(tmp_path / "background"),
+        "rir_paths": str(tmp_path / "rir"),
+        "negative_feature_data_files": "",
+        "false_positive_validation_data_path": "",
+        "custom_negative_phrases": "",
+        "profile": "quick",
+    }
+    tab = ProjectTab.__new__(ProjectTab)
+    tab.app = _FakeApp()
+    tab.app.project = _project(tmp_path)
+    tab.wake_phrase_var = _FakeMutablePathVar("Computer")
+    tab.model_name_var = _FakeMutablePathVar("computer")
+    tab.workspace_root_var = _FakeMutablePathVar(str(tmp_path / "old"))
+    tab.oww_path_var = _FakeMutablePathVar(str(tmp_path / "old_oww"))
+    tab.orac_path_var = _FakeMutablePathVar(str(tmp_path / "old_orac"))
+    tab.piper_path_var = _FakeMutablePathVar(str(tmp_path / "old_piper"))
+    tab.piper_model_path_var = _FakeMutablePathVar(
+        str(tmp_path / "voices" / "old.onnx")
+    )
+    tab.background_paths_var = _FakeMutablePathVar(str(tmp_path / "old_bg"))
+    tab.rir_paths_var = _FakeMutablePathVar(str(tmp_path / "old_rir"))
+    tab.negative_feature_paths_var = _FakeMutablePathVar(
+        str(tmp_path / "old.npy")
+    )
+    tab.validation_path_var = _FakeMutablePathVar(str(tmp_path / "old_fp.npy"))
+    tab.negatives_var = _FakeMutablePathVar("computer")
+    tab.profile_var = _FakeMutablePathVar("balanced")
+    tab.status_var = _FakeStatusVar()
+    refresh_saw_cleared_project = False
+
+    def fake_refresh_feature_bundle(**_kwargs: object) -> None:
+        nonlocal refresh_saw_cleared_project
+        refresh_saw_cleared_project = tab.app.project is None
+
+    tab.refresh_feature_bundle = fake_refresh_feature_bundle  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        project_tab,
+        "_new_project_form_values",
+        lambda: defaults,
+    )
+
+    ProjectTab.new_project(tab)
+
+    assert tab.app.project is None
+    assert refresh_saw_cleared_project is True
+    assert tab.wake_phrase_var.get() == defaults["wake_phrase"]
+    assert tab.model_name_var.get() == defaults["model_name"]
+    assert tab.workspace_root_var.get() == defaults["workspace_root"]
+    assert tab.oww_path_var.get() == defaults["openwakeword_repo"]
+    assert tab.orac_path_var.get() == defaults["orac_repo"]
+    assert (
+        tab.piper_path_var.get()
+        == defaults["piper_sample_generator_path"]
+    )
+    assert tab.piper_model_path_var.get() == ""
+    assert tab.background_paths_var.get() == defaults["background_paths"]
+    assert tab.rir_paths_var.get() == defaults["rir_paths"]
+    assert tab.negative_feature_paths_var.get() == ""
+    assert tab.validation_path_var.get() == ""
+    assert (
+        tab.negatives_var.get()
+        == defaults["custom_negative_phrases"]
+    )
+    assert tab.profile_var.get() == defaults["profile"]
+    assert tab.status_var.value == "New project form ready."
+
+
 def test_piper_model_selection_updates_loaded_project_but_not_disk(
     tmp_path: Path,
 ) -> None:
@@ -557,6 +637,24 @@ def test_main_window_set_project_refreshes_test_tab(tmp_path: Path) -> None:
     OracWakeLabApp.set_project(app, project)
 
     assert app.current_project == project
+    assert app.test_tab.refreshed is True
+    assert app.export_tab.refreshed is True
+
+
+def test_main_window_clear_project_refreshes_project_derived_tabs(
+    tmp_path: Path,
+) -> None:
+    """Clearing a project should refresh tabs that cache project paths."""
+    app = object.__new__(OracWakeLabApp)
+    app.current_project = _project(tmp_path)
+    app.project_label = _FakeLabel()
+    app.test_tab = _FakeRefreshTab()
+    app.export_tab = _FakeRefreshTab()
+
+    OracWakeLabApp.clear_project(app)
+
+    assert app.current_project is None
+    assert app.project_label.text == "No project loaded."
     assert app.test_tab.refreshed is True
     assert app.export_tab.refreshed is True
 
@@ -972,6 +1070,9 @@ class _FakeApp:
 
     def set_project(self, project: WakeWordProject) -> None:
         self.project = project
+
+    def clear_project(self) -> None:
+        self.project = None
 
     def get_project(self) -> WakeWordProject | None:
         return self.project

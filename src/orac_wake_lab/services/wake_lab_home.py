@@ -1,6 +1,6 @@
-"""Managed home directory service for Orac Wake Lab."""
+"""Managed home directory service for WakeLab."""
 # Author: Clive Bostock
-# Date: 2026-05-09
+# Date: 2026-05-14
 # Description: Centralises default paths and folder initialisation.
 
 from __future__ import annotations
@@ -62,6 +62,26 @@ def get_external_dir() -> Path:
     return get_wake_lab_home() / "external"
 
 
+def get_openwakeword_repo_dir() -> Path:
+    """Return the managed openWakeWord checkout directory."""
+    return get_external_dir() / "openWakeWord"
+
+
+def get_piper_sample_generator_dir() -> Path:
+    """Return the managed Piper sample generator checkout directory."""
+    return get_external_dir() / "piper-sample-generator"
+
+
+def get_piper_voices_dir() -> Path:
+    """Return the managed Piper voice model directory."""
+    return get_external_dir() / "piper-voices"
+
+
+def get_orac_repo_dir() -> Path:
+    """Return the managed runtime target directory."""
+    return get_external_dir() / "runtime-target"
+
+
 def get_downloads_dir() -> Path:
     """Return the downloads directory."""
     return get_wake_lab_home() / "downloads"
@@ -73,20 +93,12 @@ def get_cache_dir() -> Path:
 
 
 def detect_openwakeword_repo() -> Path:
-    """Attempt to detect the openWakeWord repository path.
+    """Return the managed openWakeWord repository path.
 
     Returns:
-        Path: Detected path or managed default.
+        Path: Managed default checkout path.
     """
-    candidates = [
-        Path("/home/clive/PycharmProjects/openWakeWord"),
-        Path("~/PycharmProjects/openWakeWord").expanduser(),
-        get_external_dir() / "openWakeWord",
-    ]
-    for candidate in candidates:
-        if (candidate / "openwakeword" / "train.py").exists():
-            return candidate.resolve()
-    return candidates[-1]
+    return get_openwakeword_repo_dir()
 
 
 def detect_piper_sample_generator_path() -> Path:
@@ -96,37 +108,23 @@ def detect_piper_sample_generator_path() -> Path:
         Path: Detected path or managed default.
     """
     candidates = [
+        get_piper_sample_generator_dir(),
         Path("/home/clive/PycharmProjects/piper-sample-generator"),
         Path("~/PycharmProjects/piper-sample-generator").expanduser(),
-        get_external_dir() / "piper-sample-generator",
     ]
     for candidate in candidates:
         if (candidate / "piper_sample_generator" / "__main__.py").exists():
             return candidate.resolve()
-    return candidates[-1]
+    return get_piper_sample_generator_dir()
 
 
 def detect_orac_repo() -> Path:
-    """Attempt to detect the Orac repository path.
+    """Return the default runtime target path.
 
     Returns:
-        Path: Detected path or managed default.
+        Path: Managed default runtime target path.
     """
-    # Try to find it relative to this file
-    this_file = Path(__file__).resolve()
-    # tools/orac_wake_lab/services/wake_lab_home.py -> 4 levels up
-    orac_root = this_file.parents[3]
-    if (orac_root / "resources" / "config" / "orac.ini").exists():
-        return orac_root
-
-    candidates = [
-        Path("/home/clive/PycharmProjects/Orac"),
-        Path("~/PycharmProjects/Orac").expanduser(),
-    ]
-    for candidate in candidates:
-        if (candidate / "resources" / "config" / "orac.ini").exists():
-            return candidate.resolve()
-    return candidates[0]
+    return get_orac_repo_dir()
 
 
 def initialize_wake_lab_folders() -> list[Path]:
@@ -142,8 +140,10 @@ def initialize_wake_lab_folders() -> list[Path]:
         get_negative_features_dir(),
         get_false_positive_validation_dir(),
         get_external_dir(),
-        get_external_dir() / "openWakeWord",
-        get_external_dir() / "piper-sample-generator",
+        get_openwakeword_repo_dir(),
+        get_piper_sample_generator_dir(),
+        get_piper_voices_dir(),
+        get_orac_repo_dir(),
         get_downloads_dir(),
         get_cache_dir(),
     ]

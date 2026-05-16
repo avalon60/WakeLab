@@ -1,7 +1,7 @@
-"""Data models for Orac Wake Lab."""
+"""Data models for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-09
-# Description: Exposes Orac Wake Lab data models.
+# Description: Exposes WakeLab data models.
 
 from __future__ import annotations
 

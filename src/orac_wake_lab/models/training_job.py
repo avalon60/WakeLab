@@ -1,4 +1,4 @@
-"""Training job models for Orac Wake Lab."""
+"""Training job models for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-09
 # Description: Defines subprocess training job state.

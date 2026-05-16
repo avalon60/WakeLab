@@ -1,4 +1,4 @@
-"""Validation result models for Orac Wake Lab."""
+"""Validation result models for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-09
 # Description: Defines structured validation and dependency check results.

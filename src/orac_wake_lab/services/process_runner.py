@@ -1,4 +1,4 @@
-"""Background subprocess runner for Orac Wake Lab."""
+"""Background subprocess runner for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-09
 # Description: Runs openWakeWord training commands without blocking the GUI.

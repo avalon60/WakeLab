@@ -1,4 +1,4 @@
-"""Dependency and path checks for Orac Wake Lab."""
+"""Dependency and path checks for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-09
 # Description: Checks local dependencies needed by training stages.
@@ -18,6 +18,10 @@ from orac_wake_lab.services.openwakeword_assets import (
 from orac_wake_lab.services.training_config import (
     validate_training_config_inputs,
 )
+from orac_wake_lab.services.training_config import (
+    validate_positive_generation_settings,
+)
+from orac_wake_lab.services.training_config import validate_training_text_fields
 
 
 def _path_is_unset(path: Path) -> bool:
@@ -70,6 +74,8 @@ def run_dependency_checks(project: WakeWordProject) -> list[ValidationResult]:
             ["augment", "train"],
         ),
         _check_validation_data(project.false_positive_validation_data_path),
+        validate_positive_generation_settings(project),
+        validate_training_text_fields(project),
         validate_training_config_inputs(project),
     ]
     return results
@@ -197,7 +203,7 @@ def _check_openwakeword_assets(repo_path: Path) -> ValidationResult:
         message=(
             "Missing openWakeWord runtime assets: "
             + ", ".join(str(path) for path in missing)
-            + ". Wake Lab will download them when Train Model starts."
+            + ". Wake Lab will download them when Augment Clips starts."
         ),
         blocks=[],
     )

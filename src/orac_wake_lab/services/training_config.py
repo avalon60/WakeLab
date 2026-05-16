@@ -1,4 +1,4 @@
-"""openWakeWord training config generation for Orac Wake Lab."""
+"""openWakeWord training config generation for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-09
 # Description: Builds YAML configs for openWakeWord train.py.
@@ -14,6 +14,9 @@ from orac_wake_lab.models.validation import ValidationResult
 from orac_wake_lab.services.feature_bundle import STANDARD_FEATURE_BUNDLE_MESSAGE
 from orac_wake_lab.services.feature_bundle import validate_feature_file
 
+
+DEFAULT_INTER_PART_SILENCE_MIN_MS = 80
+DEFAULT_INTER_PART_SILENCE_MAX_MS = 250
 
 TRAINING_PROFILES: dict[str, dict[str, Any]] = {
     "quick": {
@@ -85,6 +88,23 @@ def build_training_config(project: WakeWordProject) -> dict[str, Any]:
     config: dict[str, Any] = {
         "model_name": project.model_name,
         "target_phrase": [project.wake_phrase],
+        "wakelab_positive_generation": {
+            "use_training_phrase_parts": (
+                project.use_training_phrase_parts
+            ),
+            "training_pronunciation_phrase": (
+                project.training_pronunciation_phrase
+            ),
+            "training_phrase_parts": project.training_phrase_parts or [],
+            "inter_part_silence_min_ms": project.inter_part_silence_min_ms,
+            "inter_part_silence_max_ms": project.inter_part_silence_max_ms,
+        },
+        "wakelab_real_positives": {
+            "enabled": project.enable_real_positives,
+            "directory": str(project.real_positive_clips_dir),
+            "minimum_count": project.real_positive_min_count,
+            "target_percent": project.real_positive_target_percent,
+        },
         "custom_negative_phrases": project.custom_negative_phrases,
         "piper_sample_generator_path": str(
             project.piper_sample_generator_path
@@ -105,6 +125,137 @@ def build_training_config(project: WakeWordProject) -> dict[str, Any]:
     }
     config.update(profile)
     return config
+
+
+def validate_positive_generation_settings(
+    project: WakeWordProject,
+) -> ValidationResult:
+    """Validate positive sample pronunciation controls.
+
+    Args:
+        project (WakeWordProject): Wake-word project settings.
+
+    Returns:
+        ValidationResult: Validation result for pronunciation controls.
+    """
+    try:
+        minimum = int(project.inter_part_silence_min_ms)
+        maximum = int(project.inter_part_silence_max_ms)
+    except (TypeError, ValueError):
+        return ValidationResult(
+            name="Positive sample pronunciation",
+            status="fail",
+            message="Inter-part silence values must be whole milliseconds.",
+            blocks=["generate"],
+        )
+
+    if minimum < 0 or maximum < 0:
+        return ValidationResult(
+            name="Positive sample pronunciation",
+            status="fail",
+            message="Inter-part silence values must be non-negative.",
+            blocks=["generate"],
+        )
+    if maximum < minimum:
+        return ValidationResult(
+            name="Positive sample pronunciation",
+            status="fail",
+            message=(
+                "Inter-part silence max must be greater than or equal to min."
+            ),
+            blocks=["generate"],
+        )
+
+    if project.use_training_phrase_parts:
+        parts = project.training_phrase_parts or []
+        if not parts:
+            return ValidationResult(
+                name="Positive sample pronunciation",
+                status="fail",
+                message=(
+                    "Enable constructed parts only when Training phrase "
+                    "parts contains at least one fragment."
+                ),
+                blocks=["generate"],
+            )
+        if any(not part.strip() for part in parts):
+            return ValidationResult(
+                name="Positive sample pronunciation",
+                status="fail",
+                message="Training phrase parts must not contain blank parts.",
+                blocks=["generate"],
+            )
+    else:
+        if not project.training_pronunciation_phrase.strip():
+            return ValidationResult(
+                name="Positive sample pronunciation",
+                status="fail",
+                message=(
+                    "Enable simple phrase only when Training pronunciation "
+                    "phrase contains text."
+                ),
+                blocks=["generate"],
+            )
+        if "|" in project.training_pronunciation_phrase:
+            return ValidationResult(
+                name="Positive sample pronunciation",
+                status="fail",
+                message=(
+                    "Do not put '|' in Training pronunciation phrase. Use "
+                    "Training phrase parts for splitting, for example: Hay | "
+                    "Aurack."
+                ),
+                blocks=["generate"],
+            )
+
+    return ValidationResult(
+        name="Positive sample pronunciation",
+        status="pass",
+        message="Positive sample pronunciation settings are valid.",
+        blocks=[],
+    )
+
+
+def validate_training_text_fields(project: WakeWordProject) -> ValidationResult:
+    """Validate text fields consumed by upstream openWakeWord generation.
+
+    Args:
+        project (WakeWordProject): Wake-word project settings.
+
+    Returns:
+        ValidationResult: Validation result for canonical training text.
+    """
+    if "|" in project.wake_phrase:
+        return ValidationResult(
+            name="Training text",
+            status="fail",
+            message=(
+                "Do not put '|' in Wake phrase. Use Training phrase parts "
+                "for pronunciation splitting, for example: Hey | Aurack."
+            ),
+            blocks=["generate"],
+        )
+
+    bad_negative_phrases = [
+        phrase for phrase in project.custom_negative_phrases or [] if "|" in phrase
+    ]
+    if bad_negative_phrases:
+        return ValidationResult(
+            name="Training text",
+            status="fail",
+            message=(
+                "Do not put '|' in Negative phrases. The '|' separator is "
+                "only for Training phrase parts."
+            ),
+            blocks=["generate"],
+        )
+
+    return ValidationResult(
+        name="Training text",
+        status="pass",
+        message="Training text fields are valid.",
+        blocks=[],
+    )
 
 
 def validate_training_config_inputs(

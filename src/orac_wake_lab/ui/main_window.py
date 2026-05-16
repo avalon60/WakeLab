@@ -51,7 +51,6 @@ class OracWakeLabApp(ctk.CTk):
             sticky="ew",
         )
         header.grid_columnconfigure(0, weight=1)
-        header.grid_columnconfigure(1, weight=0)
 
         self.project_label = ctk.CTkLabel(
             header,
@@ -63,20 +62,6 @@ class OracWakeLabApp(ctk.CTk):
             column=0,
             sticky="ew",
         )
-
-        appearance_frame = ctk.CTkFrame(header, fg_color="transparent")
-        appearance_frame.grid(row=0, column=1, sticky="e")
-        ctk.CTkLabel(appearance_frame, text="Appearance").pack(
-            side="left",
-            padx=(0, 8),
-        )
-        self.appearance_mode_selector = ctk.CTkSegmentedButton(
-            appearance_frame,
-            values=list(APPEARANCE_MODES),
-            command=self.set_appearance_mode,
-        )
-        self.appearance_mode_selector.pack(side="left")
-        self.appearance_mode_selector.set(DEFAULT_APPEARANCE_MODE)
 
         tabs = ctk.CTkTabview(self)
         tabs.grid(row=1, column=0, padx=12, pady=12, sticky="nsew")

@@ -60,6 +60,12 @@ These terms are specific to the Wake Lab workflow.
   contain `generate_samples.py`.
 - **Piper voice/model**: the Piper voice assets used by openWakeWord to
   synthesise spoken examples of the wake phrase during training.
+- **Training phrase parts**: optional `|`-separated positive-generation
+  fragments such as `Hey | Orac`. Wake Lab generates each part separately
+  and inserts real silence between parts so TTS word-boundary collapse is
+  not baked into the training positives.
+  Spaces and punctuation alone do not guarantee audible pauses in Piper,
+  so listen to generated positive clips before training.
 - **Background audio**: directories containing ambient audio to mix into
   generated training samples.
 - **Room impulse responses, RIR**: recordings of room acoustics used to
@@ -405,8 +411,8 @@ Widgets:
 - **Negative feature .npy files**: comma-separated feature files used
   for negative examples.
 - **False-positive validation .npy**: the validation feature file.
-- **Negative phrases**: extra phrases to treat as near-misses during
-  training.
+- **Negative phrases**: extra phrases used as negative training text and
+  as the source list for optional synthetic near-miss clips.
 - **Profile**: training preset selector (`quick`, `balanced`, or
   `manual`).
 - **Browse** buttons: pick directories or files for the corresponding
@@ -457,6 +463,13 @@ file. It is intended as the first diagnostic path before live microphone
 testing: use it to confirm that the model activates on known positive
 clips and stays below threshold on non-wake-word audio.
 
+Near-miss clips are not defined by score. They are similar-sounding
+phrases that should not activate the wake word, such as `Hey Oracle`,
+`Hey Oreck`, `Hey Eric`, `Oracle`, or `Orac`. After scoring, they should
+ideally sit comfortably below threshold. Clips that sit just under
+threshold are still risky and should be treated as weak negatives, not
+successes.
+
 Widgets:
 
 - **Model**: path to the trained `.onnx` model. **Refresh Model**
@@ -472,6 +485,15 @@ Widgets:
   openWakeWord, and reports the highest score.
 - **Copy To Clipboard**: copies the diagnostic output for support or
   comparison.
+- **Score Similar Phrases**: scores near-miss clips that should not wake
+  Orac.
+- **Open Near-Misses Folder**: opens
+  `<project_workspace>/test/near_misses/`.
+- **Import Near-Miss WAVs**: imports one or more WAV files into the
+  near-misses folder.
+- **Generate Synthetic Near-Miss Clips**: synthesizes similar phrases
+  from the project’s negative phrases into the near-misses folder when a
+  Piper voice/model is configured.
 - **Output textbox**: shows the model path, WAV path, model output
   name, number of frames evaluated, maximum score, threshold, and
   activation result.
@@ -486,6 +508,40 @@ Typical checks:
    should ideally stay below the threshold.
 3. Test real recordings of your voice saying and not saying the wake
    phrase before relying on the model in Orac.
+
+### Real positive recordings
+
+If a model scores generated Piper positives very highly but scores your
+own recording of the same wake phrase near zero, the training and export
+pipeline is working but the positive training data does not match your
+voice. Pure synthetic training can miss your accent, timing, microphone,
+room sound, or actual pronunciation. Lowering the threshold cannot fix a
+near-zero score because there is no useful activation signal to tune.
+
+Use **Import Real Positive WAVs** on the Project tab to select and add
+multiple real user recordings at once. WakeLab stores the durable
+originals in a dedicated project directory:
+
+```text
+<project_workspace>/real_positives/
+```
+
+Imported clips are normalised to mono 16 kHz 16-bit PCM WAV. WakeLab
+keeps the existing Piper-generated positives and stages the real
+positives as additional positive training clips before augmentation.
+The **Real training mix** setting controls the staged positive-training
+balance in 10% increments. For example, `50%` produces roughly half
+synthetic positives and half real positives; `100%` excludes synthetic
+positive training clips for that diagnostic run and replaces that
+training volume with real-derived staged copies.
+Generated output cleanup may delete staged copies under
+`openwakeword_output/`, but it does not delete the project-local
+`real_positives/` recordings.
+
+Record several natural examples of the wake phrase with the same
+microphone and speaking style you expect to use. Fewer than 20 real
+positive clips is useful for diagnosis but may still be too little for a
+robust model.
 
 ### Export tab
 

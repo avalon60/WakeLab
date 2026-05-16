@@ -111,6 +111,72 @@ def test_wav_file(
     )
 
 
+def test_wav_directory(
+    project: WakeWordProject,
+    model_path: Path,
+    directory: Path,
+    threshold: float,
+) -> list[WavTestResult]:
+    """Run every WAV in a directory through a trained model.
+
+    Args:
+        project: Project containing the openWakeWord repository path.
+        model_path: Trained ONNX model path.
+        directory: Directory containing WAV files.
+        threshold: Activation threshold used for summaries.
+
+    Returns:
+        list[WavTestResult]: Per-file test results.
+    """
+    if not directory.exists():
+        raise FileNotFoundError(f"WAV directory does not exist: {directory}")
+    wav_paths = sorted(path for path in directory.glob("*.wav") if path.is_file())
+    if not wav_paths:
+        raise FileNotFoundError(f"No WAV files found in: {directory}")
+    return [
+        test_wav_file(project, model_path, wav_path, threshold)
+        for wav_path in wav_paths
+    ]
+
+
+def render_directory_results(
+    label: str,
+    directory: Path,
+    results: list[WavTestResult],
+) -> str:
+    """Return a compact grouped directory evaluation summary."""
+    if not results:
+        return f"{label}: no WAV files evaluated in {directory}\n"
+    scores = [result.max_score for result in results]
+    activated_count = sum(1 for result in results if result.activated)
+    activated_results = [result for result in results if result.activated]
+    lines = [
+        f"{label}",
+        f"Directory: {directory}",
+        f"Files evaluated: {len(results)}",
+        f"Activated: {activated_count}/{len(results)}",
+        f"Min score: {min(scores):.4f}",
+        f"Average score: {float(np.mean(scores)):.4f}",
+        f"Max score: {max(scores):.4f}",
+        "",
+    ]
+    if activated_results:
+        lines.append("Activated clips:")
+        for result in activated_results:
+            lines.append(
+                f"  {result.wav_path.name}: max={result.max_score:.4f}"
+            )
+    else:
+        lines.append("Activated clips: none")
+    lines.append("")
+    for result in results:
+        lines.append(
+            f"{result.wav_path.name}: max={result.max_score:.4f} "
+            f"{'ACTIVATED' if result.activated else 'not activated'}"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def summarize_predictions(
     predictions: list[dict[str, float]],
 ) -> tuple[str, float, int]:

@@ -31,6 +31,22 @@ class WakeWordProject:
         orac_repo (Path): Local Orac repository path.
         piper_sample_generator_path (Path): Piper sample generator path.
         piper_voice_model_path (Path): Piper voice or generator model path.
+        training_pronunciation_phrase (str): Optional positive-sample
+          pronunciation phrase used only for TTS generation.
+        training_phrase_parts (list[str]): Optional positive-sample phrase
+          parts to generate separately before concatenation.
+        inter_part_silence_min_ms (int): Minimum generated silence between
+          phrase parts, in milliseconds.
+        inter_part_silence_max_ms (int): Maximum generated silence between
+          phrase parts, in milliseconds.
+        enable_real_positives (bool): Whether imported user recordings should
+          be added to positive training data.
+        real_positive_clips_dir (Path): Project-managed real positive clips
+          directory.
+        real_positive_min_count (int): Minimum preferred real-positive clip
+          count before training.
+        real_positive_target_percent (int): Target percentage of staged
+          positive training clips that should come from real recordings.
         background_paths (list[Path]): Background audio directories.
         rir_paths (list[Path]): Room impulse response directories.
         negative_feature_data_files (dict[str, Path]): Precomputed negative
@@ -47,6 +63,14 @@ class WakeWordProject:
     orac_repo: Path = DEFAULT_ORAC_REPO
     piper_sample_generator_path: Path = Path("")
     piper_voice_model_path: Path = Path("")
+    training_pronunciation_phrase: str = ""
+    training_phrase_parts: list[str] | None = None
+    inter_part_silence_min_ms: int = 80
+    inter_part_silence_max_ms: int = 250
+    enable_real_positives: bool = True
+    real_positive_clips_dir: Path = Path("")
+    real_positive_min_count: int = 20
+    real_positive_target_percent: int = 30
     background_paths: list[Path] | None = None
     rir_paths: list[Path] | None = None
     negative_feature_data_files: dict[str, Path] | None = None
@@ -63,6 +87,27 @@ class WakeWordProject:
             self.piper_sample_generator_path.expanduser()
         )
         self.piper_voice_model_path = self.piper_voice_model_path.expanduser()
+        self.training_pronunciation_phrase = (
+            self.training_pronunciation_phrase.strip()
+        )
+        self.training_phrase_parts = [
+            part.strip() for part in (self.training_phrase_parts or [])
+        ]
+        self.inter_part_silence_min_ms = int(self.inter_part_silence_min_ms)
+        self.inter_part_silence_max_ms = int(self.inter_part_silence_max_ms)
+        if isinstance(self.enable_real_positives, str):
+            self.enable_real_positives = (
+                self.enable_real_positives.strip().lower()
+                not in {"", "0", "false", "no", "off"}
+            )
+        else:
+            self.enable_real_positives = bool(self.enable_real_positives)
+        self.real_positive_clips_dir = self.real_positives_dir
+        self.real_positive_min_count = int(self.real_positive_min_count)
+        self.real_positive_target_percent = min(
+            100,
+            max(10, int(self.real_positive_target_percent)),
+        )
         self.false_positive_validation_data_path = (
             self.false_positive_validation_data_path.expanduser()
         )
@@ -117,6 +162,16 @@ class WakeWordProject:
         return self.clip_dir / "augmented"
 
     @property
+    def real_positives_dir(self) -> Path:
+        """Return the managed real positive clips directory."""
+        return self.workspace_dir / "real_positives"
+
+    @property
+    def near_miss_clips_dir(self) -> Path:
+        """Return the managed near-miss evaluation clips directory."""
+        return self.workspace_dir / "test" / "near_misses"
+
+    @property
     def training_config_path(self) -> Path:
         """Return the generated training config path."""
         return self.config_dir / "training.yaml"
@@ -166,11 +221,14 @@ class WakeWordProject:
             "orac_repo",
             "piper_sample_generator_path",
             "piper_voice_model_path",
+            "real_positive_clips_dir",
             "false_positive_validation_data_path",
         }
         list_path_fields = {"background_paths", "rir_paths"}
         dict_path_fields = {"negative_feature_data_files"}
         converted = dict(data)
+        if "real_positive_repeat_count" in converted:
+            converted.pop("real_positive_repeat_count")
         for field_name in path_fields:
             converted[field_name] = Path(converted.get(field_name, ""))
         for field_name in list_path_fields:

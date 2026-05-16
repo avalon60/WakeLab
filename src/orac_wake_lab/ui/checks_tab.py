@@ -46,7 +46,7 @@ class ChecksTab(ctk.CTkFrame):
         self.output.delete("1.0", "end")
         project = self.app.get_project()
         if project is None:
-            self.output.insert("end", "Create a project first.\n")
+            self.output.insert("end", "Create or open a project first.\n")
             self.output.configure(state="disabled")
             return
         self.output.insert("end", "Running checks...\n")

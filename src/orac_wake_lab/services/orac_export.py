@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import importlib
 import shutil
 from pathlib import Path
 
@@ -76,6 +77,75 @@ def build_orac_config_snippet(model_file: Path) -> str:
     )
 
 
+def export_model_to_directory(
+    model_file: Path,
+    target_dir: Path,
+    *,
+    overwrite: bool = False,
+    embed_onnx_external_data: bool = False,
+) -> Path:
+    """Copy a trained model into a selected target directory.
+
+    Args:
+        model_file (Path): Model file to export.
+        target_dir (Path): Directory that should receive the model.
+        overwrite (bool): Whether to replace an existing target model.
+        embed_onnx_external_data (bool): Whether ONNX external data should
+          be embedded into the ONNX file instead of copied beside it.
+
+    Returns:
+        Path: Exported model path.
+
+    Raises:
+        FileNotFoundError: If the selected model does not exist.
+        ValueError: If the selected model has an unsupported extension.
+        FileExistsError: If the target exists and overwrite is false.
+    """
+    model_file = model_file.expanduser()
+    target_dir = target_dir.expanduser()
+    if not model_file.exists():
+        raise FileNotFoundError(f"Model file does not exist: {model_file}")
+    if model_file.suffix not in {".onnx", ".tflite"}:
+        raise ValueError("Only .onnx and .tflite models can be exported.")
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_file = target_dir / model_file.name
+    if target_file.exists() and not overwrite:
+        raise FileExistsError(
+            f"Target model already exists: {target_file}"
+        )
+
+    if model_file.suffix == ".onnx" and embed_onnx_external_data:
+        target_sidecar = _onnx_sidecar_path(target_file)
+        if target_sidecar.exists() and not overwrite:
+            raise FileExistsError(
+                f"Target ONNX external data file already exists: {target_sidecar}"
+            )
+        if overwrite and target_sidecar.exists():
+            target_sidecar.unlink()
+        embed_onnx_external_data_file(model_file, target_file)
+        return target_file
+
+    sidecar = _onnx_sidecar_path(model_file)
+    target_sidecar = _onnx_sidecar_path(target_file)
+    if sidecar is not None and not sidecar.exists():
+        raise FileNotFoundError(
+            f"ONNX external data file does not exist: {sidecar}"
+        )
+    if (
+        sidecar is not None
+        and target_sidecar.exists()
+        and not overwrite
+    ):
+        raise FileExistsError(
+            f"Target ONNX external data file already exists: {target_sidecar}"
+        )
+
+    shutil.copy2(model_file, target_file)
+    _copy_onnx_sidecar(model_file, target_file, overwrite=overwrite)
+    return target_file
+
+
 def export_model_to_orac(
     project: WakeWordProject,
     model_file: Path,
@@ -97,36 +167,12 @@ def export_model_to_orac(
         FileNotFoundError: If the selected model does not exist.
         ValueError: If the selected model has an unsupported extension.
     """
-    model_file = model_file.expanduser()
-    if not model_file.exists():
-        raise FileNotFoundError(f"Model file does not exist: {model_file}")
-    if model_file.suffix not in {".onnx", ".tflite"}:
-        raise ValueError("Only .onnx and .tflite models can be exported.")
-
     target_dir = project.orac_repo / "var" / "models" / "wake"
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target_file = target_dir / model_file.name
-    if target_file.exists() and not overwrite:
-        raise FileExistsError(
-            f"Target model already exists: {target_file}"
-        )
-    sidecar = _onnx_sidecar_path(model_file)
-    target_sidecar = _onnx_sidecar_path(target_file)
-    if sidecar is not None and not sidecar.exists():
-        raise FileNotFoundError(
-            f"ONNX external data file does not exist: {sidecar}"
-        )
-    if (
-        sidecar is not None
-        and target_sidecar.exists()
-        and not overwrite
-    ):
-        raise FileExistsError(
-            f"Target ONNX external data file already exists: {target_sidecar}"
-        )
-    shutil.copy2(model_file, target_file)
-    _copy_onnx_sidecar(model_file, target_file, overwrite=overwrite)
-
+    target_file = export_model_to_directory(
+        model_file,
+        target_dir,
+        overwrite=overwrite,
+    )
     snippet = build_orac_config_snippet(target_file)
     project.config_dir.mkdir(parents=True, exist_ok=True)
     project.orac_candidate_config_path.write_text(snippet, encoding="utf-8")
@@ -162,3 +208,40 @@ def _copy_onnx_sidecar(
             f"Target ONNX external data file already exists: {target_sidecar}"
         )
     shutil.copy2(source_sidecar, target_sidecar)
+
+
+def embed_onnx_external_data_file(
+    source_onnx: Path,
+    target_onnx: Path,
+) -> None:
+    """Embed ONNX external data into a single self-contained model file.
+
+    Args:
+        source_onnx (Path): Source ONNX model that may reference external data.
+        target_onnx (Path): Target ONNX path to create.
+
+    Raises:
+        FileNotFoundError: If the source ONNX file does not exist.
+        RuntimeError: If the `onnx` package is unavailable.
+    """
+    if not source_onnx.exists():
+        raise FileNotFoundError(f"Source ONNX file not found: {source_onnx}")
+
+    onnx = _import_onnx_module()
+    target_onnx.parent.mkdir(parents=True, exist_ok=True)
+
+    model = onnx.load(str(source_onnx), load_external_data=True)
+    onnx.external_data_helper.convert_model_from_external_data(model)
+    onnx.save_model(model, str(target_onnx))
+    onnx.load(str(target_onnx), load_external_data=False)
+    onnx.checker.check_model(str(target_onnx))
+
+
+def _import_onnx_module() -> object:
+    """Import the ONNX module on demand."""
+    try:
+        return importlib.import_module("onnx")
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Embedding ONNX external data requires the 'onnx' package."
+        ) from exc

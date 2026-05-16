@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 from orac_wake_lab.models.project import DEFAULT_WORKSPACE_ROOT
@@ -19,9 +20,11 @@ PROJECT_SUBDIRS = [
     "models",
     "logs",
     "export",
+    "real_positives",
     "test/activations",
     "test/false_positives",
     "test/false_negatives",
+    "test/near_misses",
 ]
 
 
@@ -105,3 +108,60 @@ def load_project(project_path: Path) -> WakeWordProject:
     """
     data = json.loads(project_path.expanduser().read_text(encoding="utf-8"))
     return WakeWordProject.from_json_dict(data)
+
+
+def delete_project_workspace(project: WakeWordProject) -> bool:
+    """Delete a saved project workspace.
+
+    The workspace must contain a ``project.json`` whose saved
+    ``workspace_dir`` resolves to the same directory. This keeps deletion
+    scoped to valid WakeLab project folders.
+
+    Args:
+        project (WakeWordProject): Project workspace to delete.
+
+    Returns:
+        bool: True when a workspace was deleted, False when it did not exist.
+
+    Raises:
+        ValueError: If the path is not a valid project workspace.
+    """
+    workspace_dir = project.workspace_dir.expanduser().resolve(strict=False)
+    if not workspace_dir.exists():
+        return False
+    if not workspace_dir.is_dir():
+        raise ValueError(
+            f"Project workspace is not a directory: {workspace_dir}"
+        )
+
+    project_path = workspace_dir / "project.json"
+    if not project_path.exists():
+        raise ValueError(
+            f"Refusing to delete workspace without project.json: {workspace_dir}"
+        )
+
+    saved_project = load_project(project_path)
+    saved_workspace = saved_project.workspace_dir.expanduser().resolve(
+        strict=False
+    )
+    if saved_workspace != workspace_dir:
+        raise ValueError(
+            "Refusing to delete workspace because project.json points to "
+            f"{saved_workspace}, not {workspace_dir}"
+        )
+
+    protected_dirs = {
+        Path.home().resolve(),
+        wake_lab_home.get_wake_lab_home().resolve(),
+        wake_lab_home.get_projects_root().resolve(),
+    }
+    if (
+        workspace_dir in protected_dirs
+        or workspace_dir.parent == workspace_dir
+    ):
+        raise ValueError(
+            f"Refusing to delete protected directory: {workspace_dir}"
+        )
+
+    shutil.rmtree(workspace_dir)
+    return True

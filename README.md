@@ -59,6 +59,12 @@ These terms are specific to the Wake Lab workflow.
   contain `generate_samples.py`.
 - **Piper voice/model**: the Piper voice assets used by openWakeWord to
   synthesise spoken examples of the wake phrase during training.
+- **Training pronunciation phrase**: optional text used only for positive
+  TTS sample generation. It does not rename the model or replace the
+  canonical wake phrase.
+- **Training phrase parts**: optional `|`-separated phrase fragments such
+  as `Hey | Orac`. Wake Lab can synthesize each part separately and
+  concatenate the fragments with real silence between them.
 - **Background audio**: directories containing ambient audio to mix into
   generated training samples.
 - **Room impulse responses, RIR**: recordings of room acoustics used to
@@ -380,6 +386,54 @@ This example only covers the mechanics of using the app. The exported
 model still needs real-world testing for false positives and false
 negatives before it should be treated as ready.
 
+## Improving wake-word efficiency
+
+Wake Lab improves a wake-word model by repeating a measure, adjust, and
+retrain loop. In this context, efficiency means that the exported model
+activates reliably when the wake phrase is spoken, while staying quiet on
+near-misses, background speech, music, and room noise.
+
+1. Start in the **Project** tab and open the existing wake-word project.
+   Confirm that the wake phrase, model name, openWakeWord checkout, Piper
+   sample generator checkout, and Piper voice/model are correct.
+2. Improve the training inputs before retraining. Put realistic
+   background audio from the places where Orac will run into one or more
+   folders, usually under the managed `~/WakeLab/data/background/`
+   directory created by **Initialise Wake Lab Folders**, then add those
+   folders to the **Project** tab's **Background audio dirs** field. Add
+   useful RIR room-response data, keep the standard negative feature
+   bundle configured, and add negative phrases that sound close to the
+   wake phrase but should not activate it.
+3. For a serious retraining run, use the `balanced` profile instead of
+   `quick`. Use `quick` for fast checks only.
+4. Save the project so Wake Lab regenerates the training configuration.
+5. Run **Checks** and fix every blocker before starting training.
+6. In **Train**, run the stages in order:
+
+   - Generate Clips
+   - Augment Clips
+   - Train Model
+   - Train + Convert To TFLite, if a TFLite export is needed
+
+7. In **Test**, evaluate the generated ONNX model against known positive
+   clips, generated negative clips, and real recordings. Positive clips
+   should activate. Negative clips and real non-wake-word recordings
+   should stay below the selected threshold.
+8. Tune the threshold from the **Test** tab results and the Orac config
+   snippet. If the model false-activates, raise the threshold or add
+   stronger negative examples. If it misses the wake phrase, lower the
+   threshold or improve the positive training coverage and acoustic
+   realism.
+9. Export the best model from **Export**, apply the generated Orac config
+   snippet manually, and run the smoke-test command shown by Wake Lab.
+10. Repeat the loop with real failure examples. False positives should be
+    added as negative coverage, and missed activations should guide
+    better voice, background, RIR, or profile choices.
+
+Retraining is required when the wake phrase changes. Threshold tuning is
+usually the first thing to try when the phrase is unchanged and the model
+is close to the desired behaviour.
+
 ## Tab guide
 
 Each tab has a screenshot in [`assets/images/`](assets/images/).
@@ -399,14 +453,20 @@ Widgets:
 - **Workspace root**: top-level directory where Wake Lab stores the
   project workspace.
 - **Piper sample generator location**: the local `piper-sample-generator` root.
+- **Training pronunciation phrase**: optional alternate phrase used only
+  while generating positive TTS clips.
+- **Training phrase parts**: optional `|`-separated phrase fragments,
+  for example `Hey | Orac`.
+- **Inter-part silence min/max ms**: random silence bounds inserted
+  between generated phrase parts. Defaults are `80` and `250`.
 - **Background audio dirs**: comma-separated directories containing ambient
   audio for training.
 - **RIR dirs**: comma-separated room impulse response directories.
 - **Negative feature .npy files**: comma-separated feature files used
   for negative examples.
 - **False-positive validation .npy**: the validation feature file.
-- **Negative phrases**: extra phrases to treat as near-misses during
-  training.
+- **Negative phrases**: extra phrases used as negative training text and
+  as the source list for optional synthetic near-miss clips.
 - **Profile**: training preset selector (`quick`, `balanced`, or
   `manual`).
 - **Browse** buttons: pick directories or files for the corresponding
@@ -438,15 +498,38 @@ This tab launches the openWakeWord training stages.
 
 Widgets:
 
-- **Generate Clips**: runs the clip-generation stage.
+- **Generate Clips**: clears the current model's generated raw clip
+  folders and derived generated feature arrays, then runs the
+  clip-generation stage.
 - **Augment Clips**: runs the augmentation stage.
 - **Train Model**: runs training without TFLite conversion.
 - **Train + Convert To TFLite**: runs training and exports a TFLite
   model.
 - **Run All**: runs the supported stages in sequence.
 - **Cancel**: stops the current subprocess job.
+- **Open Positive Clips**: opens
+  `openwakeword_output/<model_name>/positive_train/` so you can listen to
+  generated positives before augmenting or training.
 - **Status label**: shows the active stage and job state.
 - **Log textbox**: shows live subprocess output.
+
+### Positive TTS word boundaries
+
+Piper and `piper-sample-generator` may collapse word boundaries when a
+wake phrase is generated as one utterance. Spaces and punctuation in text
+do not guarantee audible pauses, so a phrase such as `Hey Orac` or
+`Hay, O-rack` can become a merged sound like `hayurack`.
+
+To control this, keep **Wake phrase** as the canonical phrase and
+**Model name** as the exported model identifier, then set **Training
+phrase parts** to the spoken pieces, for example `Hey | Orac`. Wake Lab
+generates each positive part separately and inserts a random real silence
+duration between the configured min/max bounds, such as `80` to `250` ms.
+
+After **Generate Clips**, use **Open Positive Clips** and listen to the
+generated positives before training. If the examples do not sound like
+the intended spoken phrase, fix the pronunciation controls and regenerate
+the clips before continuing.
 
 ### Test tab
 
@@ -456,6 +539,13 @@ This tab tests a trained ONNX wake-word model against a selected WAV
 file. It is intended as the first diagnostic path before live microphone
 testing: use it to confirm that the model activates on known positive
 clips and stays below threshold on non-wake-word audio.
+
+Near-miss clips are not defined by score. They are similar-sounding
+phrases that should not activate the wake word, such as `Hey Oracle`,
+`Hey Oreck`, `Hey Eric`, `Oracle`, or `Orac`. After scoring, they should
+ideally sit comfortably below threshold. Clips that sit just under
+threshold are still risky and should be treated as weak negatives, not
+successes.
 
 Widgets:
 
@@ -472,6 +562,15 @@ Widgets:
   openWakeWord, and reports the highest score.
 - **Copy To Clipboard**: copies the diagnostic output for support or
   comparison.
+- **Score Similar Phrases**: scores near-miss clips that should not wake
+  Orac.
+- **Open Near-Misses Folder**: opens
+  `<project_workspace>/test/near_misses/`.
+- **Import Near-Miss WAVs**: imports one or more WAV files into the
+  near-misses folder.
+- **Generate Synthetic Near-Miss Clips**: synthesizes similar phrases
+  from the project’s negative phrases into the near-misses folder when a
+  Piper voice/model is configured.
 - **Output textbox**: shows the model path, WAV path, model output
   name, number of frames evaluated, maximum score, threshold, and
   activation result.
@@ -486,6 +585,40 @@ Typical checks:
    should ideally stay below the threshold.
 3. Test real recordings of your voice saying and not saying the wake
    phrase before relying on the model in Orac.
+
+### Real positive recordings
+
+If a model scores generated Piper positives very highly but scores your
+own recording of the same wake phrase near zero, the training and export
+pipeline is working but the positive training data does not match your
+voice. Pure synthetic training can miss your accent, timing, microphone,
+room sound, or actual pronunciation. Lowering the threshold cannot fix a
+near-zero score because there is no useful activation signal to tune.
+
+Use **Import Real Positive WAVs** on the Project tab to select and add
+multiple real user recordings at once. WakeLab stores the durable
+originals in a dedicated project directory:
+
+```text
+<project_workspace>/real_positives/
+```
+
+Imported clips are normalised to mono 16 kHz 16-bit PCM WAV. WakeLab
+keeps the existing Piper-generated positives and stages the real
+positives as additional positive training clips before augmentation.
+The **Real training mix** setting controls the staged positive-training
+balance in 10% increments. For example, `50%` produces roughly half
+synthetic positives and half real positives; `100%` excludes synthetic
+positive training clips for that diagnostic run and replaces that
+training volume with real-derived staged copies.
+Generated output cleanup may delete staged copies under
+`openwakeword_output/`, but it does not delete the project-local
+`real_positives/` recordings.
+
+Record several natural examples of the wake phrase with the same
+microphone and speaking style you expect to use. Fewer than 20 real
+positive clips is useful for diagnosis but may still be too little for a
+robust model.
 
 ### Export tab
 

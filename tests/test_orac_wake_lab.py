@@ -62,6 +62,8 @@ from orac_wake_lab.ui import training_tab
 from orac_wake_lab.ui.main_window import DEFAULT_APPEARANCE_MODE
 from orac_wake_lab.ui.main_window import THEME_PATH
 from orac_wake_lab.ui.main_window import OracWakeLabApp
+from orac_wake_lab.ui.main_window import _resolve_theme_settings
+from orac_wake_lab.ui.main_window import _resolve_theme_path
 from orac_wake_lab.ui.checks_tab import ChecksTab
 from orac_wake_lab.ui.export_tab import ExportTab
 from orac_wake_lab.ui.project_tab import ProjectTab
@@ -142,6 +144,7 @@ def test_training_config_keeps_canonical_model_name_with_phrase_parts(
 ) -> None:
     """Pronunciation controls should not rename the exported model."""
     project = _project(tmp_path)
+    project.use_training_phrase_parts = True
     project.training_pronunciation_phrase = "Hay O-rack"
     project.training_phrase_parts = ["Hey", "Orac"]
 
@@ -150,6 +153,7 @@ def test_training_config_keeps_canonical_model_name_with_phrase_parts(
     assert config["model_name"] == "hey_orac"
     assert config["target_phrase"] == ["Hey Orac"]
     assert config["wakelab_positive_generation"] == {
+        "use_training_phrase_parts": True,
         "training_pronunciation_phrase": "Hay O-rack",
         "training_phrase_parts": ["Hey", "Orac"],
         "inter_part_silence_min_ms": 80,
@@ -181,6 +185,7 @@ def test_positive_generation_validation_rejects_invalid_silence_bounds(
 ) -> None:
     """Positive generation validation should reject invalid silence bounds."""
     project = _project(tmp_path)
+    project.use_training_phrase_parts = True
     project.training_phrase_parts = ["Hey", "Orac"]
     project.inter_part_silence_min_ms = 250
     project.inter_part_silence_max_ms = 80
@@ -448,6 +453,7 @@ def test_project_load_save_round_trip(tmp_path: Path) -> None:
 def test_phrase_part_settings_round_trip(tmp_path: Path) -> None:
     """Positive sample phrase-part settings should persist in project JSON."""
     project = _project(tmp_path)
+    project.use_training_phrase_parts = True
     project.training_pronunciation_phrase = "Hay O-rack"
     project.training_phrase_parts = ["Hey", "Orac"]
     project.inter_part_silence_min_ms = 90
@@ -458,6 +464,7 @@ def test_phrase_part_settings_round_trip(tmp_path: Path) -> None:
 
     assert loaded.training_pronunciation_phrase == "Hay O-rack"
     assert loaded.training_phrase_parts == ["Hey", "Orac"]
+    assert loaded.use_training_phrase_parts is True
     assert loaded.inter_part_silence_min_ms == 90
     assert loaded.inter_part_silence_max_ms == 210
 
@@ -969,6 +976,7 @@ def test_loaded_project_fields_are_mapped_to_project_form(
     assert values["piper_voice_model_path"] == str(
         tmp_path / "voices" / "en_US.onnx"
     )
+    assert values["use_training_phrase_parts"] == "false"
     assert values["training_pronunciation_phrase"] == ""
     assert values["training_phrase_parts"] == ""
     assert values["inter_part_silence_min_ms"] == "80"
@@ -999,6 +1007,7 @@ def test_new_project_resets_form_and_clears_active_project(
         "orac_repo": str(tmp_path / "external" / "Orac"),
         "piper_sample_generator_path": str(tmp_path / "piper"),
         "piper_voice_model_path": "",
+        "use_training_phrase_parts": "false",
         "training_pronunciation_phrase": "",
         "training_phrase_parts": "",
         "inter_part_silence_min_ms": "80",
@@ -1026,6 +1035,7 @@ def test_new_project_resets_form_and_clears_active_project(
     tab.piper_model_path_var = _FakeMutablePathVar(
         str(tmp_path / "voices" / "old.onnx")
     )
+    tab.use_training_phrase_parts_var = _FakeBoolVar(True)
     tab.training_pronunciation_phrase_var = _FakeMutablePathVar("old phrase")
     tab.training_phrase_parts_var = _FakeMutablePathVar("old | parts")
     tab.inter_part_silence_min_var = _FakeMutablePathVar("1")
@@ -1043,6 +1053,7 @@ def test_new_project_resets_form_and_clears_active_project(
     tab.negatives_var = _FakeMutablePathVar("computer")
     tab.profile_var = _FakeMutablePathVar("balanced")
     tab.status_var = _FakeStatusVar()
+    tab._update_positive_generation_mode_fields = lambda: None  # type: ignore[method-assign]
     refresh_saw_cleared_project = False
 
     def fake_refresh_feature_bundle(**_kwargs: object) -> None:
@@ -1070,6 +1081,7 @@ def test_new_project_resets_form_and_clears_active_project(
         == defaults["piper_sample_generator_path"]
     )
     assert tab.piper_model_path_var.get() == ""
+    assert tab.use_training_phrase_parts_var.get() is False
     assert tab.training_pronunciation_phrase_var.get() == ""
     assert tab.training_phrase_parts_var.get() == ""
     assert tab.inter_part_silence_min_var.get() == "80"
@@ -1179,6 +1191,98 @@ def test_theme_path_points_to_bundled_theme() -> None:
     """The app should load the bundled CustomTkinter theme."""
     assert THEME_PATH.parent.name == "themes"
     assert THEME_PATH.exists()
+
+
+def test_resolve_theme_path_uses_selected_theme_without_suffix(
+    tmp_path: Path,
+) -> None:
+    """A valid theme name in set_theme.txt should override NightTrain."""
+    themes_dir = tmp_path / "themes"
+    themes_dir.mkdir()
+    night_train = themes_dir / "NightTrain.json"
+    anthracite = themes_dir / "Anthracite.json"
+    night_train.write_text("night", encoding="utf-8")
+    anthracite.write_text("anthracite", encoding="utf-8")
+    selection_path = themes_dir / "set_theme.txt"
+    selection_path.write_text("Anthracite", encoding="utf-8")
+
+    assert _resolve_theme_path(
+        themes_dir=themes_dir,
+        selection_path=selection_path,
+        fallback_path=night_train,
+    ) == anthracite
+
+
+def test_resolve_theme_path_accepts_json_suffix_and_falls_back(
+    tmp_path: Path,
+) -> None:
+    """The resolver should accept .json suffixes and ignore invalid choices."""
+    themes_dir = tmp_path / "themes"
+    themes_dir.mkdir()
+    night_train = themes_dir / "NightTrain.json"
+    anthracite = themes_dir / "Anthracite.json"
+    night_train.write_text("night", encoding="utf-8")
+    anthracite.write_text("anthracite", encoding="utf-8")
+    selection_path = themes_dir / "set_theme.txt"
+    selection_path.write_text("Anthracite.json", encoding="utf-8")
+
+    assert _resolve_theme_path(
+        themes_dir=themes_dir,
+        selection_path=selection_path,
+        fallback_path=night_train,
+    ) == anthracite
+
+    selection_path.write_text("MissingTheme", encoding="utf-8")
+
+    assert _resolve_theme_path(
+        themes_dir=themes_dir,
+        selection_path=selection_path,
+        fallback_path=night_train,
+    ) == night_train
+
+
+def test_resolve_theme_settings_reads_theme_and_mode(
+    tmp_path: Path,
+) -> None:
+    """The theme selection file should support theme:appearance values."""
+    themes_dir = tmp_path / "themes"
+    themes_dir.mkdir()
+    night_train = themes_dir / "NightTrain.json"
+    phoenix = themes_dir / "Phoenix.json"
+    night_train.write_text("night", encoding="utf-8")
+    phoenix.write_text("phoenix", encoding="utf-8")
+    selection_path = themes_dir / "set_theme.txt"
+    selection_path.write_text("Phoenix.json:light", encoding="utf-8")
+
+    settings = _resolve_theme_settings(
+        themes_dir=themes_dir,
+        selection_path=selection_path,
+        fallback_path=night_train,
+    )
+
+    assert settings.theme_path == phoenix
+    assert settings.appearance_mode == "Light"
+
+
+def test_resolve_theme_settings_falls_back_for_invalid_values(
+    tmp_path: Path,
+) -> None:
+    """Invalid theme or appearance values should fall back independently."""
+    themes_dir = tmp_path / "themes"
+    themes_dir.mkdir()
+    night_train = themes_dir / "NightTrain.json"
+    night_train.write_text("night", encoding="utf-8")
+    selection_path = themes_dir / "set_theme.txt"
+    selection_path.write_text("MissingTheme:sepia", encoding="utf-8")
+
+    settings = _resolve_theme_settings(
+        themes_dir=themes_dir,
+        selection_path=selection_path,
+        fallback_path=night_train,
+    )
+
+    assert settings.theme_path == night_train
+    assert settings.appearance_mode == DEFAULT_APPEARANCE_MODE
 
 
 def test_set_appearance_mode_forwards_to_customtkinter(
@@ -1669,6 +1773,7 @@ def test_phrase_parts_use_runtime_overlay_and_generated_output_dirs(
 ) -> None:
     """Phrase parts should route positive generation through WakeLab overlay."""
     project = _project(tmp_path)
+    project.use_training_phrase_parts = True
     project.training_phrase_parts = ["Hey", "Orac"]
     project.inter_part_silence_min_ms = 80
     project.inter_part_silence_max_ms = 250

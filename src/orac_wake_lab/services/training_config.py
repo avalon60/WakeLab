@@ -1,4 +1,4 @@
-"""openWakeWord training config generation for Orac Wake Lab."""
+"""openWakeWord training config generation for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-09
 # Description: Builds YAML configs for openWakeWord train.py.
@@ -89,6 +89,9 @@ def build_training_config(project: WakeWordProject) -> dict[str, Any]:
         "model_name": project.model_name,
         "target_phrase": [project.wake_phrase],
         "wakelab_positive_generation": {
+            "use_training_phrase_parts": (
+                project.use_training_phrase_parts
+            ),
             "training_pronunciation_phrase": (
                 project.training_pronunciation_phrase
             ),
@@ -163,26 +166,47 @@ def validate_positive_generation_settings(
             blocks=["generate"],
         )
 
-    if "|" in project.training_pronunciation_phrase:
-        return ValidationResult(
-            name="Positive sample pronunciation",
-            status="fail",
-            message=(
-                "Do not put '|' in Training pronunciation phrase. Use "
-                "Training phrase parts for splitting, for example: Hay | "
-                "Aurack."
-            ),
-            blocks=["generate"],
-        )
-
-    parts = project.training_phrase_parts or []
-    if parts and any(not part.strip() for part in parts):
-        return ValidationResult(
-            name="Positive sample pronunciation",
-            status="fail",
-            message="Training phrase parts must not contain blank parts.",
-            blocks=["generate"],
-        )
+    if project.use_training_phrase_parts:
+        parts = project.training_phrase_parts or []
+        if not parts:
+            return ValidationResult(
+                name="Positive sample pronunciation",
+                status="fail",
+                message=(
+                    "Enable constructed parts only when Training phrase "
+                    "parts contains at least one fragment."
+                ),
+                blocks=["generate"],
+            )
+        if any(not part.strip() for part in parts):
+            return ValidationResult(
+                name="Positive sample pronunciation",
+                status="fail",
+                message="Training phrase parts must not contain blank parts.",
+                blocks=["generate"],
+            )
+    else:
+        if not project.training_pronunciation_phrase.strip():
+            return ValidationResult(
+                name="Positive sample pronunciation",
+                status="fail",
+                message=(
+                    "Enable simple phrase only when Training pronunciation "
+                    "phrase contains text."
+                ),
+                blocks=["generate"],
+            )
+        if "|" in project.training_pronunciation_phrase:
+            return ValidationResult(
+                name="Positive sample pronunciation",
+                status="fail",
+                message=(
+                    "Do not put '|' in Training pronunciation phrase. Use "
+                    "Training phrase parts for splitting, for example: Hay | "
+                    "Aurack."
+                ),
+                blocks=["generate"],
+            )
 
     return ValidationResult(
         name="Positive sample pronunciation",

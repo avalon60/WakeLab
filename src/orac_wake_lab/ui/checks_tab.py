@@ -1,4 +1,4 @@
-"""Dependency checks tab for Orac Wake Lab."""
+"""Dependency checks tab for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-09
 # Description: Displays dependency and path check results.
@@ -25,8 +25,14 @@ class ChecksTab(ctk.CTkFrame):
         self.app = app
         self.output = ctk.CTkTextbox(self, wrap="word")
         self.output.pack(fill="both", expand=True, padx=12, pady=12)
-        button_row = ctk.CTkFrame(self, fg_color="transparent")
+        button_row = ctk.CTkFrame(self, fg_color="transparent", border_width=0)
         button_row.pack(anchor="w", padx=12, pady=(0, 12))
+        self.back_button = ctk.CTkButton(
+            button_row,
+            text="Back To Project",
+            command=self.back_to_project,
+        )
+        self.back_button.pack(side="left", padx=(0, 8))
         self.run_button = ctk.CTkButton(
             button_row,
             text="Run Checks",
@@ -39,6 +45,14 @@ class ChecksTab(ctk.CTkFrame):
             command=self.copy_output_to_clipboard,
         )
         self.copy_button.pack(side="left")
+
+    def back_to_project(self) -> None:
+        """Return to the Project Setup workflow step."""
+        if hasattr(self.app, "select_workflow_step"):
+            self.app.select_workflow_step("Project Setup")
+            return
+        if hasattr(self.app, "select_tab"):
+            self.app.select_tab("Project")
 
     def run_checks(self) -> None:
         """Run dependency checks for the current project."""

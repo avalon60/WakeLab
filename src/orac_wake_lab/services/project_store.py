@@ -1,4 +1,4 @@
-"""Project persistence service for Orac Wake Lab."""
+"""Project persistence service for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-10
 # Description: Creates and loads wake-word project workspaces.

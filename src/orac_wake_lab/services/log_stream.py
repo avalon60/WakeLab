@@ -1,4 +1,4 @@
-"""Log helpers for Orac Wake Lab subprocess output."""
+"""Log helpers for WakeLab subprocess output."""
 # Author: Clive Bostock
 # Date: 2026-05-09
 # Description: Provides simple append-only stage log writing.

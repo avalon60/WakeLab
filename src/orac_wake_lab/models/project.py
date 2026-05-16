@@ -1,4 +1,4 @@
-"""Project data model for Orac Wake Lab."""
+"""Project data model for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-09
 # Description: Defines persisted wake-word project settings.
@@ -21,16 +21,18 @@ DEFAULT_WORKSPACE_ROOT = wake_lab_home.get_projects_root()
 
 @dataclass
 class WakeWordProject:
-    """Represent an Orac Wake Lab wake-word project.
+    """Represent a WakeLab wake-word project.
 
     Args:
         wake_phrase (str): Wake phrase to train.
         model_name (str): Filesystem/model-safe model name.
         workspace_dir (Path): Project workspace directory.
         openwakeword_repo (Path): Local openWakeWord repository path.
-        orac_repo (Path): Local Orac repository path.
+        orac_repo (Path): Optional runtime target root path.
         piper_sample_generator_path (Path): Piper sample generator path.
         piper_voice_model_path (Path): Piper voice or generator model path.
+        use_training_phrase_parts (bool): Whether to synthesize positives
+          from the split phrase-parts fields instead of the simple phrase.
         training_pronunciation_phrase (str): Optional positive-sample
           pronunciation phrase used only for TTS generation.
         training_phrase_parts (list[str]): Optional positive-sample phrase
@@ -63,6 +65,7 @@ class WakeWordProject:
     orac_repo: Path = DEFAULT_ORAC_REPO
     piper_sample_generator_path: Path = Path("")
     piper_voice_model_path: Path = Path("")
+    use_training_phrase_parts: bool = False
     training_pronunciation_phrase: str = ""
     training_phrase_parts: list[str] | None = None
     inter_part_silence_min_ms: int = 80
@@ -87,6 +90,15 @@ class WakeWordProject:
             self.piper_sample_generator_path.expanduser()
         )
         self.piper_voice_model_path = self.piper_voice_model_path.expanduser()
+        if isinstance(self.use_training_phrase_parts, str):
+            self.use_training_phrase_parts = (
+                self.use_training_phrase_parts.strip().lower()
+                not in {"", "0", "false", "no", "off"}
+            )
+        else:
+            self.use_training_phrase_parts = bool(
+                self.use_training_phrase_parts
+            )
         self.training_pronunciation_phrase = (
             self.training_pronunciation_phrase.strip()
         )
@@ -178,7 +190,7 @@ class WakeWordProject:
 
     @property
     def orac_candidate_config_path(self) -> Path:
-        """Return the candidate Orac config snippet path."""
+        """Return the legacy candidate config snippet path."""
         return self.config_dir / "orac.ini.candidate"
 
     def to_json_dict(self) -> dict[str, Any]:
@@ -229,6 +241,10 @@ class WakeWordProject:
         converted = dict(data)
         if "real_positive_repeat_count" in converted:
             converted.pop("real_positive_repeat_count")
+        if "use_training_phrase_parts" not in converted:
+            converted["use_training_phrase_parts"] = bool(
+                converted.get("training_phrase_parts")
+            )
         for field_name in path_fields:
             converted[field_name] = Path(converted.get(field_name, ""))
         for field_name in list_path_fields:

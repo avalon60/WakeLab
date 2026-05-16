@@ -1,4 +1,4 @@
-"""Training execution tab for Orac Wake Lab."""
+"""Training execution tab for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-13
 # Description: Provides buttons and log output for training subprocesses.
@@ -101,8 +101,7 @@ def _generate_samples_compatibility_overlay(
         Path | None: Overlay directory path when created, otherwise ``None``.
     """
     needs_word_boundary_overlay = bool(
-        project.training_phrase_parts
-        or project.training_pronunciation_phrase.strip()
+        project.use_training_phrase_parts
     )
     if (
         not needs_word_boundary_overlay
@@ -157,10 +156,13 @@ def _generate_samples_compatibility_overlay(
             "    phrase_parts = json.loads(\n"
             "        os.environ.get('WAKELAB_TRAINING_PHRASE_PARTS_JSON', '[]')\n"
             "    )\n"
+            "    use_phrase_parts = os.environ.get(\n"
+            "        'WAKELAB_USE_TRAINING_PHRASE_PARTS', 'false'\n"
+            "    ).strip().lower() in {'1', 'true', 'yes', 'on'}\n"
             "    pronunciation_phrase = os.environ.get(\n"
             "        'WAKELAB_TRAINING_PRONUNCIATION_PHRASE', ''\n"
             "    ).strip()\n"
-            "    if is_positive_dir and phrase_parts:\n"
+            "    if is_positive_dir and use_phrase_parts:\n"
             "        generation_kwargs = dict(kwargs)\n"
             "        text = generation_kwargs.pop(\n"
             "            'text', args[0] if len(args) > 0 else None\n"
@@ -253,7 +255,7 @@ class TrainingTab(ctk.CTkFrame):
             wraplength=1020,
         ).pack(fill="x", padx=12, pady=(12, 0), anchor="w")
 
-        buttons = ctk.CTkFrame(self)
+        buttons = ctk.CTkFrame(self, fg_color="transparent", border_width=0)
         buttons.pack(fill="x", padx=12, pady=12)
         for label, stage in [
             ("Generate Clips", "generate_clips"),
@@ -294,7 +296,7 @@ class TrainingTab(ctk.CTkFrame):
         self.log = ctk.CTkTextbox(self, wrap="none")
         self.log.pack(fill="both", expand=True, padx=12, pady=12)
         self.log.configure(state="disabled")
-        button_row = ctk.CTkFrame(self, fg_color="transparent")
+        button_row = ctk.CTkFrame(self, fg_color="transparent", border_width=0)
         button_row.pack(anchor="w", padx=12, pady=(0, 12))
         ctk.CTkButton(
             button_row,
@@ -740,6 +742,9 @@ def _apply_positive_generation_env(
     """Add positive sample generation controls to a subprocess environment."""
     env["WAKELAB_TRAINING_PRONUNCIATION_PHRASE"] = (
         project.training_pronunciation_phrase
+    )
+    env["WAKELAB_USE_TRAINING_PHRASE_PARTS"] = (
+        "true" if project.use_training_phrase_parts else "false"
     )
     env["WAKELAB_TRAINING_PHRASE_PARTS_JSON"] = json.dumps(
         project.training_phrase_parts or []

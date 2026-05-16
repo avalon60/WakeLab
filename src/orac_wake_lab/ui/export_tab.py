@@ -1,4 +1,4 @@
-"""Model export tab for Orac Wake Lab."""
+"""Model export tab for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-14
 # Description: Exports generated wake-word models to selected target directories.

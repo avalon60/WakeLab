@@ -1,4 +1,4 @@
-"""Dependency and path checks for Orac Wake Lab."""
+"""Dependency and path checks for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-09
 # Description: Checks local dependencies needed by training stages.

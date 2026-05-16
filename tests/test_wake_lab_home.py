@@ -38,7 +38,8 @@ def test_managed_paths_derive_from_home() -> None:
     assert wake_lab_home.get_false_positive_validation_dir() == home / "data" / "features" / "validation"
     assert wake_lab_home.get_openwakeword_repo_dir() == home / "external" / "openWakeWord"
     assert wake_lab_home.get_piper_sample_generator_dir() == home / "external" / "piper-sample-generator"
-    assert wake_lab_home.get_orac_repo_dir() == home / "external" / "Orac"
+    assert wake_lab_home.get_piper_voices_dir() == home / "external" / "piper-voices"
+    assert wake_lab_home.get_orac_repo_dir() == home / "external" / "runtime-target"
 
 
 def test_initialize_wake_lab_folders(tmp_path: Path) -> None:
@@ -53,10 +54,11 @@ def test_initialize_wake_lab_folders(tmp_path: Path) -> None:
         assert (tmp_path / "data" / "features" / "validation").is_dir()
         assert (tmp_path / "external" / "openWakeWord").is_dir()
         assert (tmp_path / "external" / "piper-sample-generator").is_dir()
-        assert (tmp_path / "external" / "Orac").is_dir()
+        assert (tmp_path / "external" / "piper-voices").is_dir()
+        assert (tmp_path / "external" / "runtime-target").is_dir()
         assert (tmp_path / "downloads").is_dir()
         assert (tmp_path / "cache").is_dir()
-        assert len(dirs) == 11
+        assert len(dirs) == 12
 
 
 def test_discover_negative_features(tmp_path: Path) -> None:
@@ -90,25 +92,14 @@ def test_discover_validation_features(tmp_path: Path) -> None:
 
 
 def test_detect_openwakeword_repo_fallback(tmp_path: Path) -> None:
-    """It should fallback to managed external dir if not found elsewhere."""
+    """It should return the managed external checkout path."""
     with mock.patch.dict(os.environ, {"WAKE_LAB_HOME": str(tmp_path)}):
-        with mock.patch("orac_wake_lab.services.wake_lab_home.Path.exists", autospec=True) as mock_exists:
-            mock_exists.return_value = False
-            # No repos exist anywhere
-            detected = wake_lab_home.detect_openwakeword_repo()
-            assert detected == tmp_path / "external" / "openWakeWord"
+        detected = wake_lab_home.detect_openwakeword_repo()
+        assert detected == tmp_path / "external" / "openWakeWord"
 
 
 def test_detect_openwakeword_repo_discovery(tmp_path: Path) -> None:
-    """It should detect openWakeWord if it exists in managed external."""
+    """It should keep the managed path even before the checkout exists."""
     with mock.patch.dict(os.environ, {"WAKE_LAB_HOME": str(tmp_path)}):
-        repo_dir = tmp_path / "external" / "openWakeWord"
-        
-        def side_effect(self):
-            # Only return True for our mock repo's marker file
-            return "openwakeword/train.py" in str(self) and str(repo_dir) in str(self)
-
-        with mock.patch("orac_wake_lab.services.wake_lab_home.Path.exists", autospec=True) as mock_exists:
-            mock_exists.side_effect = side_effect
-            detected = wake_lab_home.detect_openwakeword_repo()
-            assert detected == repo_dir.resolve()
+        detected = wake_lab_home.detect_openwakeword_repo()
+        assert detected == tmp_path / "external" / "openWakeWord"

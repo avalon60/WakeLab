@@ -1,4 +1,4 @@
-"""Piper voice test playback helpers for Orac Wake Lab."""
+"""Piper voice test playback helpers for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-13
 # Description: Synthesises and plays a short voice sample for Project tab testing.

@@ -1,4 +1,4 @@
-"""File-based model test tab for Orac Wake Lab."""
+"""File-based model test tab for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-14
 # Description: Tests trained wake-word models against selected WAV files.
@@ -46,7 +46,7 @@ class TestTab(ctk.CTkFrame):
             justify="left",
         ).pack(anchor="w", padx=12, pady=12)
 
-        form = ctk.CTkFrame(self)
+        form = ctk.CTkFrame(self, corner_radius=8)
         form.pack(fill="x", padx=12, pady=(0, 12))
         self._add_path_row(
             form,
@@ -73,7 +73,7 @@ class TestTab(ctk.CTkFrame):
         )
         form.columnconfigure(1, weight=1)
 
-        button_row = ctk.CTkFrame(self, fg_color="transparent")
+        button_row = ctk.CTkFrame(self, fg_color="transparent", border_width=0)
         button_row.pack(anchor="w", padx=12, pady=(0, 12))
         ctk.CTkButton(
             button_row,
@@ -90,7 +90,7 @@ class TestTab(ctk.CTkFrame):
             text="Copy To Clipboard",
             command=self.copy_output_to_clipboard,
         ).pack(side="left", padx=6)
-        eval_row = ctk.CTkFrame(self, fg_color="transparent")
+        eval_row = ctk.CTkFrame(self, fg_color="transparent", border_width=0)
         eval_row.pack(anchor="w", padx=12, pady=(0, 12))
         eval_buttons = [
             ("Score Synthetic Positives", self.score_synthetic_positives),
@@ -107,8 +107,8 @@ class TestTab(ctk.CTkFrame):
 
         near_miss_help = (
             "Near-miss clips are similar phrases that should not activate the "
-            "wake word, such as 'Hey Oracle', 'Hey Oreck', 'Hey Eric', "
-            "'Oracle', or 'Orac'."
+            "wake word, such as 'Hey Nover', 'Hey Nora', 'Hey Rover', "
+            "or 'Nova'."
         )
         ctk.CTkLabel(
             self,
@@ -117,7 +117,11 @@ class TestTab(ctk.CTkFrame):
             justify="left",
         ).pack(anchor="w", padx=12, pady=(0, 8))
 
-        near_miss_row = ctk.CTkFrame(self, fg_color="transparent")
+        near_miss_row = ctk.CTkFrame(
+            self,
+            fg_color="transparent",
+            border_width=0,
+        )
         near_miss_row.pack(anchor="w", padx=12, pady=(0, 12))
         ctk.CTkButton(
             near_miss_row,
@@ -155,7 +159,7 @@ class TestTab(ctk.CTkFrame):
             row=row,
             column=0,
             sticky="w",
-            padx=6,
+            padx=(12, 6),
             pady=6,
         )
         ctk.CTkEntry(parent, textvariable=variable).grid(
@@ -168,7 +172,7 @@ class TestTab(ctk.CTkFrame):
         ctk.CTkButton(parent, text="Browse", command=command).grid(
             row=row,
             column=2,
-            padx=6,
+            padx=(6, 12),
             pady=6,
         )
 
@@ -343,18 +347,18 @@ class TestTab(ctk.CTkFrame):
         self._score_directory("Real positive clips", project.real_positive_clips_dir)
 
     def score_near_misses(self) -> None:
-        """Score similar phrases that should not wake Orac."""
+        """Score similar phrases that should not activate the model."""
         project = self.app.get_project()
         if project is None:
             self._set_output("Create or open a project first.\n")
             return
         self._score_directory(
-            "Similar phrases that should not wake Orac",
+            "Similar phrases that should not activate the model",
             project.near_miss_clips_dir,
             empty_guidance=(
                 "No near-miss WAV files were found. Add or generate recordings "
                 "of similar phrases that should not activate the wake word, "
-                "such as 'Hey Oracle', 'Hey Oreck', or 'Oracle'.\n"
+                "such as 'Hey Nover', 'Hey Nora', or 'Nova'.\n"
             ),
         )
 

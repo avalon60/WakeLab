@@ -1,4 +1,4 @@
-"""Managed home directory service for Orac Wake Lab."""
+"""Managed home directory service for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-14
 # Description: Centralises default paths and folder initialisation.
@@ -72,9 +72,14 @@ def get_piper_sample_generator_dir() -> Path:
     return get_external_dir() / "piper-sample-generator"
 
 
+def get_piper_voices_dir() -> Path:
+    """Return the managed Piper voice model directory."""
+    return get_external_dir() / "piper-voices"
+
+
 def get_orac_repo_dir() -> Path:
-    """Return the managed Orac checkout directory."""
-    return get_external_dir() / "Orac"
+    """Return the managed runtime target directory."""
+    return get_external_dir() / "runtime-target"
 
 
 def get_downloads_dir() -> Path:
@@ -88,19 +93,11 @@ def get_cache_dir() -> Path:
 
 
 def detect_openwakeword_repo() -> Path:
-    """Attempt to detect the openWakeWord repository path.
+    """Return the managed openWakeWord repository path.
 
     Returns:
-        Path: Detected path or managed default.
+        Path: Managed default checkout path.
     """
-    candidates = [
-        get_openwakeword_repo_dir(),
-        Path("/home/clive/PycharmProjects/openWakeWord"),
-        Path("~/PycharmProjects/openWakeWord").expanduser(),
-    ]
-    for candidate in candidates:
-        if (candidate / "openwakeword" / "train.py").exists():
-            return candidate.resolve()
     return get_openwakeword_repo_dir()
 
 
@@ -122,26 +119,11 @@ def detect_piper_sample_generator_path() -> Path:
 
 
 def detect_orac_repo() -> Path:
-    """Attempt to detect the Orac repository path.
+    """Return the default runtime target path.
 
     Returns:
-        Path: Detected path or managed default.
+        Path: Managed default runtime target path.
     """
-    # Try to find it relative to this file
-    this_file = Path(__file__).resolve()
-    # tools/orac_wake_lab/services/wake_lab_home.py -> 4 levels up
-    orac_root = this_file.parents[3]
-    if (orac_root / "resources" / "config" / "orac.ini").exists():
-        return orac_root
-
-    candidates = [
-        get_orac_repo_dir(),
-        Path("/home/clive/PycharmProjects/Orac"),
-        Path("~/PycharmProjects/Orac").expanduser(),
-    ]
-    for candidate in candidates:
-        if (candidate / "resources" / "config" / "orac.ini").exists():
-            return candidate.resolve()
     return get_orac_repo_dir()
 
 
@@ -160,6 +142,7 @@ def initialize_wake_lab_folders() -> list[Path]:
         get_external_dir(),
         get_openwakeword_repo_dir(),
         get_piper_sample_generator_dir(),
+        get_piper_voices_dir(),
         get_orac_repo_dir(),
         get_downloads_dir(),
         get_cache_dir(),

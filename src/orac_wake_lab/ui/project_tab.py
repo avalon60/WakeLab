@@ -1,4 +1,4 @@
-"""Project setup tab for Orac Wake Lab."""
+"""Project setup tab for WakeLab."""
 # Author: Clive Bostock
 # Date: 2026-05-14
 # Description: Builds the wake phrase and workspace setup UI.
@@ -14,6 +14,11 @@ from tkinter import filedialog
 from tkinter import messagebox
 
 import customtkinter as ctk
+
+try:
+    from CTkToolTip import CTkToolTip
+except ImportError:  # pragma: no cover - optional UI dependency fallback
+    CTkToolTip = None  # type: ignore[assignment]
 
 from orac_wake_lab.models.project import DEFAULT_OPENWAKEWORD_REPO
 from orac_wake_lab.models.project import DEFAULT_ORAC_REPO
@@ -37,6 +42,9 @@ from orac_wake_lab.services.training_config import (
 )
 from orac_wake_lab.services.training_config import validate_training_text_fields
 from orac_wake_lab.services.training_config import write_training_config
+
+
+TOOLTIP_DELAY_SECONDS = 0.2
 
 
 class ProjectTab(ctk.CTkFrame):
@@ -77,6 +85,9 @@ class ProjectTab(ctk.CTkFrame):
         self.training_phrase_parts_var = ctk.StringVar(
             value=defaults["training_phrase_parts"]
         )
+        self.use_training_phrase_parts_var = ctk.BooleanVar(
+            value=defaults["use_training_phrase_parts"] == "true"
+        )
         self.inter_part_silence_min_var = ctk.StringVar(
             value=defaults["inter_part_silence_min_ms"]
         )
@@ -93,6 +104,10 @@ class ProjectTab(ctk.CTkFrame):
             value=defaults["real_positive_min_count"]
         )
         self.real_positive_target_percent_var = ctk.StringVar(
+            value=defaults["real_positive_target_percent"]
+        )
+        self.real_training_mix_slider: ctk.CTkSlider | None = None
+        self.real_training_mix_value_var = ctk.StringVar(
             value=defaults["real_positive_target_percent"]
         )
         self.background_paths_var = ctk.StringVar(
@@ -117,49 +132,54 @@ class ProjectTab(ctk.CTkFrame):
         self.feature_bundle_status_var = ctk.StringVar(value="")
         self.selected_project_var = ctk.StringVar(value="")
         self.available_project_paths: dict[str, Path] = {}
+        self._tooltips: list[object] = []
+        self._active_project_workflow_step = "Project Setup"
         self._build()
         self.refresh_feature_bundle(auto_apply=True)
 
     def _build(self) -> None:
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(1, weight=1)
 
         self._build_header()
-        self._build_workflow_strip()
 
         self.content_scroll = ctk.CTkScrollableFrame(
             self,
             fg_color="transparent",
+            border_width=0,
         )
-        self.content_scroll.grid(row=2, column=0, sticky="nsew")
+        self.content_scroll.grid(row=1, column=0, sticky="nsew")
 
-        content = ctk.CTkFrame(
+        self.content_frame = ctk.CTkFrame(
             self.content_scroll,
             fg_color="transparent",
-            width=1040,
+            border_width=0,
         )
-        content.pack(anchor="n", pady=(12, 4))
-        content.grid_columnconfigure(0, weight=1)
-        content.grid_columnconfigure(1, weight=1)
+        self.content_frame.pack(fill="x", expand=True, anchor="n", pady=(12, 4))
+        self.content_frame.grid_columnconfigure(0, weight=1)
+        self.content_frame.grid_columnconfigure(1, weight=1)
 
         setup_section = self._add_section(
-            content,
+            self.content_frame,
             row=0,
             column=0,
             title="1. Project Setup",
             subtitle="Name the wake-word project and choose the training profile.",
         )
+        self.project_setup_anchor = self._last_section_frame
         self._add_entry_row(
             setup_section,
             row=0,
             label="Wake phrase",
             variable=self.wake_phrase_var,
+            tooltip="The spoken phrase the wake-word model should respond to.",
         )
         self._add_entry_row(
             setup_section,
             row=1,
             label="Model name",
             variable=self.model_name_var,
+            tooltip="Filesystem-safe name used for the workspace and export files.",
             buttons=[
                 ("Derive", self._derive_model_name, 72),
             ],
@@ -170,10 +190,11 @@ class ProjectTab(ctk.CTkFrame):
             label="Profile",
             variable=self.profile_var,
             values=["quick", "balanced", "manual"],
+            tooltip="Training preset for how much of the pipeline to enable.",
         )
 
         voice_section = self._add_section(
-            content,
+            self.content_frame,
             row=0,
             column=1,
             title="2. Voice Model",
@@ -185,6 +206,7 @@ class ProjectTab(ctk.CTkFrame):
             label="Piper generator",
             variable=self.piper_path_var,
             browse=True,
+            tooltip="Local piper-sample-generator checkout used to create training clips.",
         )
         self._add_entry_row(
             voice_section,
@@ -192,58 +214,38 @@ class ProjectTab(ctk.CTkFrame):
             label="Voice / generator model",
             variable=self.piper_model_path_var,
             browse=True,
+            tooltip="Piper voice or generator model used for synthetic sample creation.",
             buttons=[
                 ("Test", self.test_piper_voice_model, 62),
             ],
         )
 
         pronunciation_section = self._add_section(
-            content,
+            self.content_frame,
             row=1,
             column=0,
             columnspan=2,
             title="3. Positive Sample Pronunciation",
             subtitle="Generate phrase parts separately when TTS merges word boundaries.",
         )
-        self._add_entry_row(
-            pronunciation_section,
-            row=0,
-            label="Training pronunciation phrase",
-            variable=self.training_pronunciation_phrase_var,
-        )
-        self._add_entry_row(
-            pronunciation_section,
-            row=1,
-            label="Training phrase parts",
-            variable=self.training_phrase_parts_var,
-        )
-        self._add_entry_row(
-            pronunciation_section,
-            row=2,
-            label="Inter-part silence min ms",
-            variable=self.inter_part_silence_min_var,
-        )
-        self._add_entry_row(
-            pronunciation_section,
-            row=3,
-            label="Inter-part silence max ms",
-            variable=self.inter_part_silence_max_var,
-        )
+        self._add_positive_generation_panel(pronunciation_section)
 
         data_section = self._add_section(
-            content,
+            self.content_frame,
             row=2,
             column=0,
             columnspan=2,
             title="4. Training Data",
             subtitle="Manage augmentation audio, feature bundles, and negative phrases.",
         )
+        self.data_anchor = self._last_section_frame
         self._add_entry_row(
             data_section,
             row=0,
             label="Background audio dirs",
             variable=self.background_paths_var,
             browse=True,
+            tooltip="Comma-separated directories of ambient audio mixed into training.",
         )
         self._add_entry_row(
             data_section,
@@ -251,6 +253,7 @@ class ProjectTab(ctk.CTkFrame):
             label="RIR dirs",
             variable=self.rir_paths_var,
             browse=True,
+            tooltip="Comma-separated directories containing room impulse responses.",
         )
         self._add_entry_row(
             data_section,
@@ -258,6 +261,7 @@ class ProjectTab(ctk.CTkFrame):
             label="Negative feature .npy files",
             variable=self.negative_feature_paths_var,
             browse=True,
+            tooltip="Precomputed negative feature arrays for non-wake audio.",
         )
         self._add_entry_row(
             data_section,
@@ -265,18 +269,20 @@ class ProjectTab(ctk.CTkFrame):
             label="False-positive validation .npy",
             variable=self.validation_path_var,
             browse=True,
+            tooltip="Feature array used to check how often the model falsely activates.",
         )
         self._add_entry_row(
             data_section,
             row=4,
             label="Negative phrases (near-miss sources)",
             variable=self.negatives_var,
+            tooltip="Similar phrases used for negative text and optional synthetic near-miss clips.",
         )
         self._add_real_positives_panel(data_section, row=5)
         self._add_feature_bundle_panel(data_section, row=6)
 
         advanced_section = self._add_collapsible_section(
-            content,
+            self.content_frame,
             row=3,
             title="Advanced Infrastructure Settings",
             subtitle="Managed WakeLab paths are used by default. Change these only when you need custom checkouts or workspace locations.",
@@ -287,6 +293,7 @@ class ProjectTab(ctk.CTkFrame):
             label="Workspace root",
             variable=self.workspace_root_var,
             browse=True,
+            tooltip="Parent directory where project workspaces are created.",
         )
         self._add_entry_row(
             advanced_section,
@@ -294,19 +301,22 @@ class ProjectTab(ctk.CTkFrame):
             label="openWakeWord checkout",
             variable=self.oww_path_var,
             browse=True,
+            tooltip="Local openWakeWord repository root containing train.py.",
         )
         self._add_entry_row(
             advanced_section,
             row=2,
-            label="Orac checkout",
+            label="Runtime target root",
             variable=self.orac_path_var,
             browse=True,
+            tooltip="Optional runtime root used only by advanced export workflows.",
         )
 
-        self._build_footer(content, row=4)
+        self._build_footer(self.content_frame, row=4)
 
         self.wake_phrase_var.trace_add("write", self._phrase_changed)
         self.refresh_projects()
+        self._update_positive_generation_mode_fields()
 
     def _build_header(self) -> None:
         """Build the project workflow header."""
@@ -324,7 +334,7 @@ class ProjectTab(ctk.CTkFrame):
             variable=self.selected_project_var,
             values=["No saved projects"],
             command=self.open_selected_project,
-            width=320,
+            width=160,
         )
         self.project_menu.grid(
             row=0,
@@ -333,80 +343,93 @@ class ProjectTab(ctk.CTkFrame):
             pady=12,
             sticky="ew",
         )
-        ctk.CTkButton(
+        self._attach_tooltip(
+            self.project_menu,
+            "Choose a saved project to load it immediately.",
+        )
+        open_folder_button = ctk.CTkButton(
             header,
             text="Open Folder",
             width=104,
             command=self.open_selected_project_folder,
-        ).grid(row=0, column=2, padx=4, pady=12)
-        ctk.CTkButton(
+        )
+        open_folder_button.grid(row=0, column=2, padx=4, pady=12)
+        self._attach_tooltip(
+            open_folder_button,
+            "Open the current project workspace in the file manager.",
+        )
+        refresh_button = ctk.CTkButton(
             header,
             text="Refresh",
             width=78,
             command=self.refresh_projects,
-        ).grid(row=0, column=3, padx=4, pady=12)
-        ctk.CTkButton(
+        )
+        refresh_button.grid(row=0, column=3, padx=4, pady=12)
+        self._attach_tooltip(
+            refresh_button,
+            "Reload the saved-project list from disk.",
+        )
+        delete_button = ctk.CTkButton(
             header,
             text="Delete",
             width=78,
             command=self.delete_project,
-        ).grid(row=0, column=4, padx=4, pady=12)
-        ctk.CTkButton(
+        )
+        delete_button.grid(row=0, column=4, padx=4, pady=12)
+        self._attach_tooltip(
+            delete_button,
+            "Delete the selected project workspace from disk.",
+        )
+        new_button = ctk.CTkButton(
             header,
             text="New Project",
             width=108,
             command=self.new_project,
-        ).grid(row=0, column=5, padx=(4, 12), pady=12)
-
-        appearance = ctk.CTkFrame(header, fg_color="transparent")
-        appearance.grid(row=0, column=6, padx=(0, 16), pady=12, sticky="e")
-        ctk.CTkLabel(appearance, text="Appearance").pack(
-            side="left",
-            padx=(0, 8),
         )
-        self.appearance_mode_selector = ctk.CTkSegmentedButton(
-            appearance,
-            values=["Dark", "Light"],
-            command=self._set_appearance_mode,
+        new_button.grid(row=0, column=5, padx=(4, 12), pady=12)
+        self._attach_tooltip(
+            new_button,
+            "Clear the form to start a new project configuration.",
         )
-        self.appearance_mode_selector.pack(side="left")
-        self.appearance_mode_selector.set("Dark")
 
-    def _build_workflow_strip(self) -> None:
-        """Build a compact workflow orientation strip."""
-        workflow = ctk.CTkFrame(self, fg_color="transparent")
-        workflow.grid(row=1, column=0, padx=12, pady=(0, 4), sticky="ew")
-        workflow.grid_columnconfigure(0, weight=1)
-        strip = ctk.CTkFrame(workflow)
-        strip.grid(row=0, column=0, sticky="ew")
-        strip.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
-        steps = [
-            "Project Setup",
-            "Data",
-            "Training",
-            "Testing",
-            "Export",
-        ]
-        for index, step in enumerate(steps):
-            ctk.CTkLabel(
-                strip,
-                text=f"{index + 1}. {step}",
-                anchor="center",
-                font=("Arial", 12, "bold" if index < 2 else "normal"),
-            ).grid(
-                row=0,
-                column=index,
-                padx=8,
-                pady=8,
-                sticky="ew",
-            )
+        save_button = ctk.CTkButton(
+            header,
+            text="Save Project",
+            width=118,
+            command=self.create_project,
+        )
+        save_button.grid(row=0, column=6, padx=(0, 16), pady=12, sticky="e")
+        self._attach_tooltip(
+            save_button,
+            "Write the current project settings to project.json.",
+        )
 
-    def _set_appearance_mode(self, mode: str) -> None:
-        """Forward appearance changes to the main application."""
-        if hasattr(self.app, "set_appearance_mode"):
-            self.app.set_appearance_mode(mode)
-        else:
-            ctk.set_appearance_mode(mode)
+    def show_project_setup_section(self) -> None:
+        """Scroll the project form to the project setup section."""
+        self._active_project_workflow_step = "Project Setup"
+        self._scroll_to_widget(self.project_setup_anchor)
+
+    def show_training_data_section(self) -> None:
+        """Scroll the project form to the training data section."""
+        self._active_project_workflow_step = "Training Data"
+        self._scroll_to_widget(self.data_anchor)
+
+    def current_project_workflow_step(self) -> str:
+        """Return the active Project-tab workflow anchor."""
+        return self._active_project_workflow_step
+
+    def _scroll_to_widget(self, widget: ctk.CTkBaseClass) -> None:
+        """Scroll the project form so the given section is visible."""
+        self.update_idletasks()
+        canvas = self.content_scroll._parent_canvas
+        scrollregion = canvas.cget("scrollregion").split()
+        scroll_height = (
+            int(float(scrollregion[3]))
+            if len(scrollregion) == 4
+            else self.content_frame.winfo_height()
+        )
+        target = max(widget.winfo_y() - 8, 0)
+        canvas.yview_moveto(min(target / max(scroll_height, 1), 1.0))
 
     def _add_section(
         self,
@@ -432,6 +455,7 @@ class ProjectTab(ctk.CTkFrame):
             ctk.CTkFrame: Section body frame.
         """
         section = ctk.CTkFrame(parent, corner_radius=8)
+        self._last_section_frame = section
         section.grid(
             row=row,
             column=column,
@@ -455,7 +479,7 @@ class ProjectTab(ctk.CTkFrame):
             justify="left",
             wraplength=450 if columnspan == 1 else 940,
         ).grid(row=1, column=0, padx=16, pady=(0, 10), sticky="ew")
-        body = ctk.CTkFrame(section, fg_color="transparent")
+        body = ctk.CTkFrame(section, fg_color="transparent", border_width=0)
         body.grid(row=2, column=0, padx=16, pady=(0, 16), sticky="ew")
         body.grid_columnconfigure(1, weight=1)
         return body
@@ -489,7 +513,7 @@ class ProjectTab(ctk.CTkFrame):
             sticky="ew",
         )
         section.grid_columnconfigure(0, weight=1)
-        header = ctk.CTkFrame(section, fg_color="transparent")
+        header = ctk.CTkFrame(section, fg_color="transparent", border_width=0)
         header.grid(row=0, column=0, padx=16, pady=(14, 8), sticky="ew")
         header.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
@@ -513,7 +537,11 @@ class ProjectTab(ctk.CTkFrame):
             justify="left",
             wraplength=940,
         ).grid(row=1, column=0, padx=16, pady=(0, 12), sticky="ew")
-        self.advanced_body = ctk.CTkFrame(section, fg_color="transparent")
+        self.advanced_body = ctk.CTkFrame(
+            section,
+            fg_color="transparent",
+            border_width=0,
+        )
         self.advanced_body.grid_columnconfigure(1, weight=1)
         self.advanced_visible = False
         return self.advanced_body
@@ -544,6 +572,7 @@ class ProjectTab(ctk.CTkFrame):
         variable: ctk.StringVar,
         browse: bool = False,
         buttons: list[tuple[str, object, int]] | None = None,
+        tooltip: str | None = None,
     ) -> None:
         """Add a labelled entry row with compact action buttons.
 
@@ -556,14 +585,17 @@ class ProjectTab(ctk.CTkFrame):
             buttons (list[tuple[str, object, int]] | None): Extra buttons as
                 label, callback, width tuples.
         """
-        ctk.CTkLabel(parent, text=label, anchor="w").grid(
+        label_widget = ctk.CTkLabel(parent, text=label, anchor="w")
+        label_widget.grid(
             row=row,
             column=0,
             padx=(0, 12),
             pady=6,
             sticky="w",
         )
-        field = ctk.CTkFrame(parent, fg_color="transparent")
+        if tooltip:
+            self._attach_tooltip(label_widget, tooltip)
+        field = ctk.CTkFrame(parent, fg_color="transparent", border_width=0)
         field.grid(row=row, column=1, pady=6, sticky="ew")
         field.grid_columnconfigure(0, weight=1)
         ctk.CTkEntry(field, textvariable=variable).grid(
@@ -597,6 +629,7 @@ class ProjectTab(ctk.CTkFrame):
         label: str,
         variable: ctk.StringVar,
         values: list[str],
+        tooltip: str | None = None,
     ) -> None:
         """Add a labelled option row.
 
@@ -607,19 +640,133 @@ class ProjectTab(ctk.CTkFrame):
             variable (ctk.StringVar): Selected value.
             values (list[str]): Option values.
         """
-        ctk.CTkLabel(parent, text=label, anchor="w").grid(
+        label_widget = ctk.CTkLabel(parent, text=label, anchor="w")
+        label_widget.grid(
             row=row,
             column=0,
             padx=(0, 12),
             pady=6,
             sticky="w",
         )
+        if tooltip:
+            self._attach_tooltip(label_widget, tooltip)
         ctk.CTkOptionMenu(
             parent,
             variable=variable,
             values=values,
             width=180,
         ).grid(row=row, column=1, pady=6, sticky="w")
+
+    def _add_positive_generation_panel(
+        self,
+        parent: ctk.CTkFrame,
+    ) -> None:
+        """Add the positive sample pronunciation controls."""
+        panel = ctk.CTkFrame(parent, fg_color="transparent", border_width=0)
+        panel.grid(row=0, column=0, columnspan=2, sticky="ew")
+        panel.grid_columnconfigure(1, weight=1)
+
+        mode_label = ctk.CTkLabel(panel, text="Positive sample mode", anchor="w")
+        mode_label.grid(row=0, column=0, padx=(0, 12), pady=(0, 8), sticky="w")
+        self._attach_tooltip(
+            mode_label,
+            "Choose whether WakeLab generates positives from one phrase or from constructed phrase parts.",
+        )
+        mode_switch = ctk.CTkSwitch(
+            panel,
+            text="Use constructed parts",
+            variable=self.use_training_phrase_parts_var,
+            command=self._update_positive_generation_mode_fields,
+        )
+        mode_switch.grid(row=0, column=1, pady=(0, 8), sticky="w")
+        self._attach_tooltip(
+            mode_switch,
+            "Enable this to hide the simple phrase field and use the phrase-part fields instead.",
+        )
+
+        self.simple_pronunciation_frame = ctk.CTkFrame(
+            panel,
+            fg_color="transparent",
+            border_width=0,
+        )
+        self.simple_pronunciation_frame.grid(
+            row=1, column=0, columnspan=2, sticky="ew"
+        )
+        self.simple_pronunciation_frame.grid_columnconfigure(1, weight=1)
+        self._add_entry_row(
+            self.simple_pronunciation_frame,
+            row=0,
+            label="Training pronunciation phrase",
+            variable=self.training_pronunciation_phrase_var,
+            tooltip=(
+                "Optional spoken form used only when the simple phrase mode is enabled."
+            ),
+        )
+
+        self.parts_pronunciation_frame = ctk.CTkFrame(
+            panel,
+            fg_color="transparent",
+            border_width=0,
+        )
+        self.parts_pronunciation_frame.grid(
+            row=2, column=0, columnspan=2, sticky="ew"
+        )
+        self.parts_pronunciation_frame.grid_columnconfigure(1, weight=1)
+        self._add_entry_row(
+            self.parts_pronunciation_frame,
+            row=0,
+            label="Training phrase parts",
+            variable=self.training_phrase_parts_var,
+            tooltip=(
+                "Constructed phrase fragments separated by '|', for example 'Hey | Nova'."
+            ),
+        )
+        silence_controls = ctk.CTkFrame(
+            self.parts_pronunciation_frame,
+            fg_color="transparent",
+            border_width=0,
+        )
+        silence_controls.grid(row=1, column=0, columnspan=2, sticky="w")
+        min_label = ctk.CTkLabel(
+            silence_controls,
+            text="Inter-part silence min ms",
+            anchor="w",
+        )
+        min_label.grid(row=0, column=0, padx=(0, 12), pady=6, sticky="w")
+        self._attach_tooltip(
+            min_label,
+            "Shortest silence inserted between generated phrase parts.",
+        )
+        ctk.CTkEntry(
+            silence_controls,
+            textvariable=self.inter_part_silence_min_var,
+            width=96,
+        ).grid(row=0, column=1, pady=6, sticky="w")
+        max_label = ctk.CTkLabel(
+            silence_controls,
+            text="Inter-part silence max ms",
+            anchor="w",
+        )
+        max_label.grid(row=0, column=2, padx=(16, 12), pady=6, sticky="w")
+        self._attach_tooltip(
+            max_label,
+            "Longest silence inserted between generated phrase parts.",
+        )
+        ctk.CTkEntry(
+            silence_controls,
+            textvariable=self.inter_part_silence_max_var,
+            width=96,
+        ).grid(row=0, column=3, pady=6, sticky="w")
+
+    def _update_positive_generation_mode_fields(self) -> None:
+        """Show the active positive sample pronunciation fields."""
+        use_parts = bool(self.use_training_phrase_parts_var.get())
+        if use_parts:
+            self.simple_pronunciation_frame.grid_remove()
+            self.parts_pronunciation_frame.grid()
+        else:
+            self.parts_pronunciation_frame.grid_remove()
+            self.simple_pronunciation_frame.grid()
 
     def _add_feature_bundle_panel(
         self,
@@ -628,7 +775,7 @@ class ProjectTab(ctk.CTkFrame):
         row: int,
     ) -> None:
         """Add feature bundle controls inside the training-data section."""
-        panel = ctk.CTkFrame(parent, fg_color="transparent")
+        panel = ctk.CTkFrame(parent, fg_color="transparent", border_width=0)
         panel.grid(row=row, column=0, columnspan=2, pady=(12, 0), sticky="ew")
         panel.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
@@ -637,21 +784,43 @@ class ProjectTab(ctk.CTkFrame):
             font=("Arial", 13, "bold"),
             anchor="w",
         ).grid(row=0, column=0, pady=(0, 8), sticky="ew")
-        actions = ctk.CTkFrame(panel, fg_color="transparent")
+        actions = ctk.CTkFrame(panel, fg_color="transparent", border_width=0)
         actions.grid(row=1, column=0, sticky="w")
         feature_buttons = [
-            ("Detect", self.detect_feature_bundle, 86),
-            ("Register", self.register_existing_feature_bundle, 96),
-            ("Open Folder", self.open_feature_folder, 108),
-            ("Download Standard", self.download_standard_feature_bundle, 148),
+            (
+                "Detect",
+                self.detect_feature_bundle,
+                86,
+                "Check whether the managed feature bundle is already available.",
+            ),
+            (
+                "Register",
+                self.register_existing_feature_bundle,
+                96,
+                "Copy existing feature files into the managed WakeLab bundle.",
+            ),
+            (
+                "Open Folder",
+                self.open_feature_folder,
+                108,
+                "Open the managed feature bundle folder in the file manager.",
+            ),
+            (
+                "Download Standard",
+                self.download_standard_feature_bundle,
+                148,
+                "Download the standard openWakeWord feature bundle.",
+            ),
         ]
-        for index, (text, command, width) in enumerate(feature_buttons):
-            ctk.CTkButton(
+        for index, (text, command, width, tooltip) in enumerate(feature_buttons):
+            button = ctk.CTkButton(
                 actions,
                 text=text,
                 width=width,
                 command=command,
-            ).grid(row=0, column=index, padx=(0, 8), pady=(0, 8))
+            )
+            button.grid(row=0, column=index, padx=(0, 8), pady=(0, 8))
+            self._attach_tooltip(button, tooltip)
         ctk.CTkLabel(
             panel,
             text=(
@@ -678,9 +847,11 @@ class ProjectTab(ctk.CTkFrame):
         row: int,
     ) -> None:
         """Add real-positive recording controls."""
-        panel = ctk.CTkFrame(parent, fg_color="transparent")
+        panel = ctk.CTkFrame(parent, fg_color="transparent", border_width=0)
         panel.grid(row=row, column=0, columnspan=2, pady=(12, 0), sticky="ew")
         panel.grid_columnconfigure(1, weight=1)
+        panel.grid_columnconfigure(2, weight=3)
+        panel.grid_columnconfigure(3, weight=1)
         ctk.CTkLabel(
             panel,
             text="Real positive recordings",
@@ -721,33 +892,95 @@ class ProjectTab(ctk.CTkFrame):
             textvariable=self.real_positive_min_count_var,
             width=120,
         ).grid(row=3, column=1, pady=4, sticky="w")
-        ctk.CTkLabel(panel, text="Real training mix", anchor="w").grid(
-            row=4,
-            column=0,
-            padx=(0, 12),
-            pady=4,
-            sticky="w",
-        )
-        ctk.CTkOptionMenu(
+        mix_controls = ctk.CTkFrame(
             panel,
-            variable=self.real_positive_target_percent_var,
-            values=[f"{value}%" for value in range(10, 101, 10)],
-            width=120,
-        ).grid(row=4, column=1, pady=4, sticky="w")
-        actions = ctk.CTkFrame(panel, fg_color="transparent")
-        actions.grid(row=5, column=0, columnspan=2, sticky="w")
+            fg_color="transparent",
+            border_width=0,
+        )
+        mix_controls.grid(
+            row=3,
+            column=2,
+            columnspan=2,
+            padx=(18, 0),
+            sticky="ew",
+        )
+        mix_controls.grid_columnconfigure(1, weight=1)
+        mix_label = ctk.CTkLabel(
+            mix_controls,
+            text="Real training mix",
+            anchor="w",
+        )
+        mix_label.grid(row=0, column=0, padx=(0, 12), pady=4, sticky="w")
+        self._attach_tooltip(
+            mix_label,
+            "Target percentage of staged positives that come from real clips.",
+        )
+        self.real_training_mix_slider = ctk.CTkSlider(
+            mix_controls,
+            from_=10,
+            to=100,
+            number_of_steps=100,
+            command=self._on_real_training_mix_slider_changed,
+        )
+        self.real_training_mix_slider.grid(row=0, column=1, pady=4, sticky="ew")
+        ctk.CTkLabel(
+            mix_controls,
+            textvariable=self.real_training_mix_value_var,
+            width=48,
+            anchor="w",
+        ).grid(row=0, column=2, padx=(12, 0), pady=4, sticky="w")
+        self._sync_real_training_mix_slider()
+        actions = ctk.CTkFrame(panel, fg_color="transparent", border_width=0)
+        actions.grid(row=4, column=0, columnspan=4, sticky="w")
         buttons = [
-            ("Import Real Positive WAVs", self.import_real_positive_wavs, 176),
-            ("Open Real Positives Folder", self.open_real_positives_folder, 188),
-            ("Validate Real Positive Clips", self.validate_real_positive_clips, 198),
+            (
+                "Import Real Positive WAVs",
+                self.import_real_positive_wavs,
+                176,
+                "Add one or more real recordings of the wake phrase to the project.",
+            ),
+            (
+                "Open Real Positives Folder",
+                self.open_real_positives_folder,
+                188,
+                "Open the folder that stores imported real wake-word recordings.",
+            ),
+            (
+                "Validate Real Positive Clips",
+                self.validate_real_positive_clips,
+                198,
+                "Check imported recordings for readable audio and suitable duration.",
+            ),
         ]
-        for index, (text, command, width) in enumerate(buttons):
-            ctk.CTkButton(
+        for index, (text, command, width, tooltip) in enumerate(buttons):
+            button = ctk.CTkButton(
                 actions,
                 text=text,
                 width=width,
                 command=command,
-            ).grid(row=0, column=index, padx=(0, 8), pady=(8, 0))
+            )
+            button.grid(row=0, column=index, padx=(0, 8), pady=(8, 0))
+            self._attach_tooltip(button, tooltip)
+
+    def _sync_real_training_mix_slider(self) -> None:
+        """Update the real-training mix slider from the percent field."""
+        slider = getattr(self, "real_training_mix_slider", None)
+        if slider is None:
+            return
+        try:
+            percent = _parse_percent(self.real_positive_target_percent_var.get())
+        except ValueError:
+            return
+        slider.set(percent)
+        if hasattr(self, "real_training_mix_value_var"):
+            self.real_training_mix_value_var.set(f"{percent}%")
+
+    def _on_real_training_mix_slider_changed(self, value: float) -> None:
+        """Keep the real-training mix field aligned with the slider."""
+        percent = int(round(value))
+        percent = max(10, min(100, percent))
+        self.real_positive_target_percent_var.set(f"{percent}%")
+        self.real_training_mix_value_var.set(f"{percent}%")
 
     def _build_footer(self, parent: ctk.CTkFrame, *, row: int) -> None:
         """Build the final project action area."""
@@ -761,27 +994,69 @@ class ProjectTab(ctk.CTkFrame):
             sticky="ew",
         )
         footer.grid_columnconfigure(1, weight=1)
-        actions = ctk.CTkFrame(footer, fg_color="transparent")
-        actions.grid(row=0, column=0, padx=16, pady=14, sticky="w")
-        ctk.CTkButton(
-            actions,
-            text="Create / Save Project",
-            width=160,
-            command=self.create_project,
-        ).pack(side="left", padx=(0, 10))
-        ctk.CTkButton(
-            actions,
-            text="Initialise Wake Lab Folders",
+        left_actions = ctk.CTkFrame(
+            footer,
+            fg_color="transparent",
+            border_width=0,
+        )
+        left_actions.grid(row=0, column=0, padx=16, pady=14, sticky="w")
+        init_button = ctk.CTkButton(
+            left_actions,
+            text="Initialise WakeLab Folders",
             width=190,
             command=self._initialize_folders,
-        ).pack(side="left")
+        )
+        init_button.pack(side="left")
+        self._attach_tooltip(
+            init_button,
+            "Create the standard managed WakeLab folder structure if it is missing.",
+        )
+        right_actions = ctk.CTkFrame(
+            footer,
+            fg_color="transparent",
+            border_width=0,
+        )
+        right_actions.grid(row=0, column=2, padx=16, pady=14, sticky="e")
+        delete_button = ctk.CTkButton(
+            right_actions,
+            text="Delete",
+            width=78,
+            command=self.delete_project,
+        )
+        delete_button.pack(side="left", padx=(0, 10))
+        self._attach_tooltip(
+            delete_button,
+            "Delete the selected project workspace from disk.",
+        )
+        new_button = ctk.CTkButton(
+            right_actions,
+            text="New Project",
+            width=108,
+            command=self.new_project,
+        )
+        new_button.pack(side="left", padx=(0, 10))
+        self._attach_tooltip(
+            new_button,
+            "Clear the form so you can start a fresh project without overwriting the current one.",
+        )
+        save_button = ctk.CTkButton(
+            right_actions,
+            text="Save Project",
+            width=160,
+            command=self.create_project,
+        )
+        save_button.pack(side="left")
+        self._attach_tooltip(
+            save_button,
+            "Write the current project settings to project.json.",
+        )
         ctk.CTkLabel(
             footer,
             textvariable=self.status_var,
             anchor="w",
             justify="left",
             wraplength=560,
-        ).grid(row=0, column=1, padx=(10, 16), pady=14, sticky="ew")
+        ).grid(row=0, column=1, padx=(10, 10), pady=14, sticky="ew")
 
     def _phrase_changed(self, *_args: object) -> None:
         if not self.model_name_var.get().strip():
@@ -854,6 +1129,19 @@ class ProjectTab(ctk.CTkFrame):
                 self._sync_current_project_feature_paths()
             elif variable is self.piper_model_path_var:
                 self._sync_current_project_piper_model_path()
+
+    def _attach_tooltip(self, widget: object, message: str) -> None:
+        """Attach a hover tooltip to a widget when the dependency is available."""
+        if CTkToolTip is None:
+            return
+        self._tooltips.append(
+            CTkToolTip(  # type: ignore[misc]
+                widget,
+                message=message,
+                delay=TOOLTIP_DELAY_SECONDS,
+                wraplength=320,
+            )
+        )
 
     def refresh_feature_bundle(
         self,
@@ -1278,6 +1566,9 @@ class ProjectTab(ctk.CTkFrame):
             values["training_pronunciation_phrase"]
         )
         self.training_phrase_parts_var.set(values["training_phrase_parts"])
+        self.use_training_phrase_parts_var.set(
+            values["use_training_phrase_parts"] == "true"
+        )
         self.inter_part_silence_min_var.set(
             values["inter_part_silence_min_ms"]
         )
@@ -1294,6 +1585,7 @@ class ProjectTab(ctk.CTkFrame):
         self.real_positive_target_percent_var.set(
             values["real_positive_target_percent"]
         )
+        self._sync_real_training_mix_slider()
         self.background_paths_var.set(values["background_paths"])
         self.rir_paths_var.set(values["rir_paths"])
         self.negative_feature_paths_var.set(
@@ -1304,6 +1596,7 @@ class ProjectTab(ctk.CTkFrame):
         )
         self.negatives_var.set(values["custom_negative_phrases"])
         self.profile_var.set(values["profile"])
+        self._update_positive_generation_mode_fields()
 
     def test_piper_voice_model(self) -> None:
         """Synthesise and play a short sample using the selected Piper model."""
@@ -1343,16 +1636,45 @@ class ProjectTab(ctk.CTkFrame):
 
     def create_project(self) -> None:
         """Create or update the current wake-word project."""
+        project_data = self._project_from_form()
+        if project_data is None:
+            return
+        project, warning = project_data
+        positive_generation_result = validate_positive_generation_settings(
+            project
+        )
+        if positive_generation_result.is_failure:
+            self.status_var.set(positive_generation_result.message)
+            return
+        text_result = validate_training_text_fields(project)
+        if text_result.is_failure:
+            self.status_var.set(text_result.message)
+            return
+        create_project_workspace(project)
+        write_training_config(project)
+        self.app.set_project(project)
+        self.status_var.set(
+            f"Project saved: {project.workspace_dir}.{warning}"
+        )
+        self.refresh_projects()
+
+    def _project_from_form(
+        self,
+    ) -> tuple[WakeWordProject, str] | None:
+        """Build a project object from the current form values."""
         self.refresh_feature_bundle(auto_apply=True)
         phrase = self.wake_phrase_var.get().strip()
         model_name = self.model_name_var.get().strip()
+        use_training_phrase_parts = bool(
+            self.use_training_phrase_parts_var.get()
+        )
         phrase_result = validate_phrase(phrase)
         model_result = validate_model_name(model_name)
         if phrase_result.is_failure or model_result.is_failure:
             self.status_var.set(
                 f"{phrase_result.message} {model_result.message}"
             )
-            return
+            return None
         try:
             silence_min_ms = int(self.inter_part_silence_min_var.get())
             silence_max_ms = int(self.inter_part_silence_max_var.get())
@@ -1367,7 +1689,7 @@ class ProjectTab(ctk.CTkFrame):
                 "Inter-part silence and real positive values must be whole "
                 "numbers."
             )
-            return
+            return None
         if (
             real_positive_target_percent < 10
             or real_positive_target_percent > 100
@@ -1375,13 +1697,30 @@ class ProjectTab(ctk.CTkFrame):
             self.status_var.set(
                 "Real positive training mix must be between 10% and 100%."
             )
-            return
+            return None
         training_phrase_parts = _split_phrase_parts(
             self.training_phrase_parts_var.get()
         )
-        if any(not part for part in training_phrase_parts):
-            self.status_var.set("Training phrase parts must not be blank.")
-            return
+        training_pronunciation_phrase = (
+            self.training_pronunciation_phrase_var.get().strip()
+        )
+        if use_training_phrase_parts:
+            if not training_phrase_parts:
+                self.status_var.set(
+                    "Constructed parts mode requires at least one training phrase part."
+                )
+                return None
+            if any(not part for part in training_phrase_parts):
+                self.status_var.set(
+                    "Training phrase parts must not be blank."
+                )
+                return None
+        else:
+            if not training_pronunciation_phrase:
+                self.status_var.set(
+                    "Simple phrase mode requires Training pronunciation phrase text."
+                )
+                return None
 
         workspace_dir = project_dir_for_model(
             model_name,
@@ -1398,8 +1737,9 @@ class ProjectTab(ctk.CTkFrame):
             piper_voice_model_path=_path_from_entry(
                 self.piper_model_path_var.get()
             ),
+            use_training_phrase_parts=use_training_phrase_parts,
             training_pronunciation_phrase=(
-                self.training_pronunciation_phrase_var.get().strip()
+                training_pronunciation_phrase
             ),
             training_phrase_parts=training_phrase_parts,
             inter_part_silence_min_ms=silence_min_ms,
@@ -1421,26 +1761,12 @@ class ProjectTab(ctk.CTkFrame):
             custom_negative_phrases=_split_values(self.negatives_var.get()),
             profile=self.profile_var.get(),
         )
-        positive_generation_result = validate_positive_generation_settings(
-            project
-        )
-        if positive_generation_result.is_failure:
-            self.status_var.set(positive_generation_result.message)
-            return
-        text_result = validate_training_text_fields(project)
-        if text_result.is_failure:
-            self.status_var.set(text_result.message)
-            return
-        create_project_workspace(project)
-        write_training_config(project)
-        self.app.set_project(project)
         warning = (
             f" Warning: {phrase_result.message}"
             if phrase_result.status == "warn"
             else ""
         )
-        self.status_var.set(f"Project saved: {workspace_dir}.{warning}")
-        self.refresh_projects()
+        return project, warning
 
 
 def _split_paths(value: str) -> list[Path]:
@@ -1537,6 +1863,9 @@ def project_form_values(project: WakeWordProject) -> dict[str, str]:
         "piper_voice_model_path": _format_path_for_entry(
             project.piper_voice_model_path
         ),
+        "use_training_phrase_parts": (
+            "true" if project.use_training_phrase_parts else "false"
+        ),
         "training_pronunciation_phrase": (
             project.training_pronunciation_phrase
         ),
@@ -1573,8 +1902,8 @@ def project_form_values(project: WakeWordProject) -> dict[str, str]:
 def _default_project_form_values() -> dict[str, str]:
     """Return the default form values used when the tab starts."""
     return {
-        "wake_phrase": "Hey Orac",
-        "model_name": "hey_orac",
+        "wake_phrase": "Hey Nova",
+        "model_name": "hey_nova",
         "workspace_root": str(DEFAULT_WORKSPACE_ROOT),
         "openwakeword_repo": str(wake_lab_home.get_openwakeword_repo_dir()),
         "orac_repo": str(wake_lab_home.get_orac_repo_dir()),
@@ -1582,6 +1911,7 @@ def _default_project_form_values() -> dict[str, str]:
             wake_lab_home.get_piper_sample_generator_dir()
         ),
         "piper_voice_model_path": "",
+        "use_training_phrase_parts": "false",
         "training_pronunciation_phrase": "",
         "training_phrase_parts": "",
         "inter_part_silence_min_ms": "80",
@@ -1594,7 +1924,7 @@ def _default_project_form_values() -> dict[str, str]:
         "rir_paths": str(wake_lab_home.get_rir_dir()),
         "negative_feature_data_files": "",
         "false_positive_validation_data_path": "",
-        "custom_negative_phrases": "hey oracle, oracle, orac",
+        "custom_negative_phrases": "hey nover, hey nora, nova",
         "profile": "quick",
     }
 

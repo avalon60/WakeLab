@@ -505,6 +505,18 @@ test = ["Pillow", "contourpy[test-no-images]", "matplotlib"]
 test-no-images = ["pytest", "pytest-cov", "pytest-rerunfailures", "pytest-xdist", "wurlitzer"]
 
 [[package]]
+name = "ctktooltip"
+version = "0.9"
+description = "Customtkinter Tooltip widget"
+optional = false
+python-versions = ">=3.6"
+groups = ["main"]
+files = [
+    {file = "ctktooltip-0.9-py3-none-any.whl", hash = "sha256:29c009fd425364197be70c1b9c441696a875daba8f4977d97a0e4c3f7e4fe468"},
+    {file = "ctktooltip-0.9.tar.gz", hash = "sha256:46b20ddbf18f1822cc37c5fcca96ebcf610a53d154670c8448b84898055a45e9"},
+]
+
+[[package]]
 name = "cuda-bindings"
 version = "13.2.0"
 description = "Python bindings for CUDA"
@@ -4234,4 +4246,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.13"
-content-hash = "53ea2012a9a854ed749a4e8dd8c9dfdac8b47b72a7a01b8dd4f464ea67bd2b74"
+content-hash = "e9fa27f1e108045c28b26fe212859f3d09535d95849b1327495906f0eb75eab1"
